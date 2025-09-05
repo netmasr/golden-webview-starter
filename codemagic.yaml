@@ -4,6 +4,8 @@ workflows:
     name: Golden WebView Android
     environment:
       flutter: stable
+      vars:
+        GWA_GOOGLE_PLAY_TRACK: internal
     scripts:
       - name: Prepare Flutter project
         script: |
@@ -58,7 +60,7 @@ workflows:
     publishing:
       google_play:
         credentials: $GWA_GOOGLE_PLAY_JSON
-        track: ${GWA_GOOGLE_PLAY_TRACK:-internal}
+        track: internal
 
   gwa-ios:
     name: Golden WebView iOS
