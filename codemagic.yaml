@@ -113,9 +113,16 @@ workflows:
       - name: Build iOS IPA
         script: |
           cd app
-          flutter build ipa --release
+          if [ -n "$GWA_APPSTORE_KEY_ID" ] && [ -n "$GWA_APPSTORE_ISSUER_ID" ] && [ -n "$GWA_APPSTORE_PRIVATE_KEY" ]; then
+            echo "iOS signing credentials detected. Building signed IPA."
+            flutter build ipa --release
+          else
+            echo "No iOS signing credentials found. Building unsigned iOS app (no codesign)."
+            flutter build ios --release --no-codesign
+          fi
     artifacts:
       - app/build/ios/ipa/*.ipa
+      - app/build/ios/iphoneos/*.app
     # publishing:
     #   app_store_connect:
     #     api_key:
