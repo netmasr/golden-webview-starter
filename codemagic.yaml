@@ -1,4 +1,67 @@
+---
 workflows:
+  gwa-android:
+    name: Golden WebView Android
+    environment:
+      flutter: stable
+      vars:
+        GWA_GOOGLE_PLAY_TRACK: internal
+    scripts:
+      - name: Prepare Flutter project
+        script: |
+          rm -rf app || true
+          flutter create app
+          cd app
+          flutter pub add webview_flutter
+          # write main.dart from template using env vars
+          mkdir -p lib
+          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+      - name: Configure icon & splash (Android)
+        script: |
+          cd app
+          ICON_URL=${GWA_ICON_URL:-""}
+          SPLASH_URL=${GWA_SPLASH_URL:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          if [ -n "$ICON_URL" ]; then
+            curl -L "$ICON_URL" -o icon.png || true
+            flutter pub add dev:flutter_launcher_icons
+            printf "%s\n" \
+              "flutter_icons:" \
+              "  android: true" \
+              "  ios: true" \
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
+            flutter pub run flutter_launcher_icons:main || true
+          fi
+          if [ -n "$SPLASH_URL" ]; then
+            curl -L "$SPLASH_URL" -o splash.png || true
+            flutter pub add dev:flutter_native_splash
+            printf "%s\n" \
+              "flutter_native_splash:" \
+              "  color: \"$THEME_COLOR\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
+              > flutter_native_splash.yaml
+            dart run flutter_native_splash:create || true
+          fi
+      - name: Build Android App Bundle
+        script: |
+          cd app
+          flutter build appbundle --release
+    artifacts:
+      - app/build/**/outputs/**/*.aab
+      - app/build/**/outputs/**/*.apk
+    publishing:
+      google_play:
+        credentials: $GWA_GOOGLE_PLAY_JSON
+        track: internal
+
   gwa-ios:
     name: Golden WebView iOS
     environment:
@@ -11,11 +74,52 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
-          # ...
+          mkdir -p lib
+          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+      - name: Configure icon & splash (iOS)
+        script: |
+          cd app
+          ICON_URL=${GWA_ICON_URL:-""}
+          SPLASH_URL=${GWA_SPLASH_URL:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          if [ -n "$ICON_URL" ]; then
+            curl -L "$ICON_URL" -o icon.png || true
+            flutter pub add dev:flutter_launcher_icons
+            printf "%s\n" \
+              "flutter_icons:" \
+              "  android: true" \
+              "  ios: true" \
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
+            flutter pub run flutter_launcher_icons:main || true
+          fi
+          if [ -n "$SPLASH_URL" ]; then
+            curl -L "$SPLASH_URL" -o splash.png || true
+            flutter pub add dev:flutter_native_splash
+            printf "%s\n" \
+              "flutter_native_splash:" \
+              "  color: \"$THEME_COLOR\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
+              > flutter_native_splash.yaml
+            dart run flutter_native_splash:create || true
+          fi
       - name: Build iOS IPA
         script: |
           cd app
           flutter build ipa --release
     artifacts:
       - app/build/ios/ipa/*.ipa
-    # publishing: (تم التعطيل)
+    # publishing:
+    #   app_store_connect:
+    #     api_key:
+    #       key_id: $GWA_APPSTORE_KEY_ID
+    #       issuer_id: $GWA_APPSTORE_ISSUER_ID
+    #       key: $GWA_APPSTORE_PRIVATE_KEY
+    #     submit_to_testflight: true
