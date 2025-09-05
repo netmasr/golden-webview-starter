@@ -1,7 +1,64 @@
 ---
 workflows:
-  gwa-android:
-    name: Golden WebView Android
+  gwa-android-build:
+    name: Golden WebView Android (Build Only)
+    environment:
+      flutter: stable
+    scripts:
+      - name: Prepare Flutter project
+        script: |
+          rm -rf app || true
+          flutter create app
+          cd app
+          flutter pub add webview_flutter
+          # write main.dart from template using env vars
+          mkdir -p lib
+          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+      - name: Configure icon & splash (Android)
+        script: |
+          cd app
+          ICON_URL=${GWA_ICON_URL:-""}
+          SPLASH_URL=${GWA_SPLASH_URL:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          if [ -n "$ICON_URL" ]; then
+            curl -L "$ICON_URL" -o icon.png || true
+            flutter pub add dev:flutter_launcher_icons
+            printf "%s\n" \
+              "flutter_icons:" \
+              "  android: true" \
+              "  ios: true" \
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
+            flutter pub run flutter_launcher_icons:main || true
+          fi
+          if [ -n "$SPLASH_URL" ]; then
+            curl -L "$SPLASH_URL" -o splash.png || true
+            flutter pub add dev:flutter_native_splash
+            printf "%s\n" \
+              "flutter_native_splash:" \
+              "  color: \"$THEME_COLOR\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
+              > flutter_native_splash.yaml
+            dart run flutter_native_splash:create || true
+          fi
+      - name: Build Android AAB & APK
+        script: |
+          cd app
+          flutter build appbundle --release
+          flutter build apk --release
+    artifacts:
+      - app/build/**/outputs/**/*.aab
+      - app/build/**/outputs/**/*.apk
+
+  gwa-android-publish:
+    name: Golden WebView Android (Publish)
     environment:
       flutter: stable
       vars:
@@ -50,16 +107,17 @@ workflows:
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create || true
           fi
-      - name: Build Android App Bundle
+      - name: Build Android AAB & APK
         script: |
           cd app
           flutter build appbundle --release
+          flutter build apk --release
     artifacts:
       - app/build/**/outputs/**/*.aab
       - app/build/**/outputs/**/*.apk
     publishing:
       google_play:
-        credentials: $GWA_GOOGLE_PLAY_JSON
+        credentials: "$GWA_GOOGLE_PLAY_JSON"
         track: internal
 
   gwa-ios:
