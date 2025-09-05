@@ -1,0 +1,14 @@
+{
+    "name": "",
+    "site_url": "",
+    "app_id": "",
+    "orientation": "system",
+    "language": "",
+    "theme_color": "#2196f3",
+    "pull_to_refresh": false,
+    "permissions": {
+        "geolocation": false,
+        "camera": false,
+        "microphone": false
+    }
+}
