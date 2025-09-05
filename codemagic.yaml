@@ -1,4 +1,3 @@
----
 workflows:
   gwa-android:
     name: Golden WebView Android
