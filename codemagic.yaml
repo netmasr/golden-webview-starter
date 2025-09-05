@@ -1,3 +1,4 @@
+---
 workflows:
   gwa-android:
     name: Golden WebView Android
@@ -25,26 +26,26 @@ workflows:
           if [ -n "$ICON_URL" ]; then
             curl -L "$ICON_URL" -o icon.png || true
             flutter pub add dev:flutter_launcher_icons
-            cat > flutter_launcher_icons.yaml <<EOF
-flutter_icons:
-  android: true
-  ios: true
-  image_path: icon.png
-EOF
+            printf "%s\n" \
+              "flutter_icons:" \
+              "  android: true" \
+              "  ios: true" \
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
             flutter pub run flutter_launcher_icons:main || true
           fi
           if [ -n "$SPLASH_URL" ]; then
             curl -L "$SPLASH_URL" -o splash.png || true
             flutter pub add dev:flutter_native_splash
-            cat > flutter_native_splash.yaml <<EOF
-flutter_native_splash:
-  color: "$THEME_COLOR"
-  image: splash.png
-  android: true
-  ios: true
-  android_gravity: center
-  ios_content_mode: center
-EOF
+            printf "%s\n" \
+              "flutter_native_splash:" \
+              "  color: \"$THEME_COLOR\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
+              > flutter_native_splash.yaml
             dart run flutter_native_splash:create || true
           fi
       - name: Build Android App Bundle
@@ -85,26 +86,26 @@ EOF
           if [ -n "$ICON_URL" ]; then
             curl -L "$ICON_URL" -o icon.png || true
             flutter pub add dev:flutter_launcher_icons
-            cat > flutter_launcher_icons.yaml <<EOF
-flutter_icons:
-  android: true
-  ios: true
-  image_path: icon.png
-EOF
+            printf "%s\n" \
+              "flutter_icons:" \
+              "  android: true" \
+              "  ios: true" \
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
             flutter pub run flutter_launcher_icons:main || true
           fi
           if [ -n "$SPLASH_URL" ]; then
             curl -L "$SPLASH_URL" -o splash.png || true
             flutter pub add dev:flutter_native_splash
-            cat > flutter_native_splash.yaml <<EOF
-flutter_native_splash:
-  color: "$THEME_COLOR"
-  image: splash.png
-  android: true
-  ios: true
-  android_gravity: center
-  ios_content_mode: center
-EOF
+            printf "%s\n" \
+              "flutter_native_splash:" \
+              "  color: \"$THEME_COLOR\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
+              > flutter_native_splash.yaml
             dart run flutter_native_splash:create || true
           fi
       - name: Build iOS IPA
@@ -115,7 +116,8 @@ EOF
       - app/build/ios/ipa/*.ipa
     publishing:
       app_store_connect:
-        api_key: $GWA_APPSTORE_KEY_ID
-        issuer_id: $GWA_APPSTORE_ISSUER_ID
-        key_content: $GWA_APPSTORE_PRIVATE_KEY
+        api_key:
+          key_id: $GWA_APPSTORE_KEY_ID
+          issuer_id: $GWA_APPSTORE_ISSUER_ID
+          key: $GWA_APPSTORE_PRIVATE_KEY
         submit_to_testflight: true
