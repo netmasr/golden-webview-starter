@@ -1,7 +1,7 @@
 {
-    "name": "",
-    "site_url": "",
-    "app_id": "",
+    "name": "store",
+    "site_url": "https://wp2all.com/store2031",
+    "app_id": "com.wp2all.co",
     "orientation": "system",
     "language": "",
     "theme_color": "#2196f3",

@@ -118,11 +118,6 @@ workflows:
     artifacts:
       - app/build/**/outputs/**/*.aab
       - app/build/**/outputs/**/*.apk
-    publishing:
-      google_play:
-        credentials: "$GWA_GOOGLE_PLAY_JSON"
-        track: internal
-
   gwa-ios-build:
     name: Golden WebView iOS (Build Only)
     environment:
@@ -241,10 +236,3 @@ workflows:
           flutter build ipa --release
     artifacts:
       - app/build/ios/ipa/*.ipa
-    publishing:
-      app_store_connect:
-        api_key:
-          key_id: $GWA_APPSTORE_KEY_ID
-          issuer_id: $GWA_APPSTORE_ISSUER_ID
-          key: $GWA_APPSTORE_PRIVATE_KEY
-        submit_to_testflight: true
