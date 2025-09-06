@@ -16,10 +16,17 @@ workflows:
           SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
           ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          USER_AGENT=${GWA_USER_AGENT:-""}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
       - name: Configure icon & splash (Android)
         script: |
           cd app
+          # Ensure INTERNET permission exists for release builds
+          if [ -f android/app/src/main/AndroidManifest.xml ]; then
+            if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
+              sed -i '0,/<application/{s//<uses-permission android:name="android.permission.INTERNET"\/>\n&/}' android/app/src/main/AndroidManifest.xml || true
+            fi
+          fi
           ICON_URL=${GWA_ICON_URL:-""}
           SPLASH_URL=${GWA_SPLASH_URL:-""}
           THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
