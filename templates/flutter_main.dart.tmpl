@@ -1,8 +1,50 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'dart:convert';
 
-void main() {
+// Helpers for theme/orientation/splash/navigation from placeholders
+const String _themeColorHex = '__THEME_COLOR__';
+const String _orientation = '__ORIENTATION__';
+const String _splashMode = '__SPLASH_BG_MODE__';
+const String _splashBgColorHex = '__SPLASH_BG_COLOR__';
+const String _splashTagline = '__SPLASH_TAGLINE__';
+const String _splashTextTheme = '__SPLASH_TEXT_THEME__';
+const String _splashDelay = '__SPLASH_DELAY__';
+const String _splashDisplayLogo = '__SPLASH_DISPLAY_LOGO__';
+const String _splashBgImageUrl = '__SPLASH_BG_IMAGE_URL__';
+const String _splashLogoImageUrl = '__SPLASH_LOGO_IMAGE_URL__';
+const String _navType = '__NAV_TYPE__';
+const String _navItemsB64 = '__NAV_ITEMS_B64__';
+
+Color _parseHexColor(String hex) {
+  var h = hex.replaceAll('#', '').toUpperCase();
+  if (h.length == 6) h = 'FF' + h; // add alpha if missing
+  return Color(int.parse(h, radix: 16));
+}
+
+Future<void> _applyOrientation() async {
+  switch (_orientation) {
+    case 'portrait':
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      break;
+    case 'landscape':
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      break;
+    default:
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+  }
+}
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _applyOrientation();
   runApp(const MyApp());
 }
 
@@ -11,9 +53,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final seed = _parseHexColor(_themeColorHex);
     return MaterialApp(
       title: '__APP_NAME__',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: seed),
+        useMaterial3: true,
+      ),
       home: const WebViewScreen(),
     );
   }
@@ -30,6 +76,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
   bool _loading = true;
   String? _error;
+  bool _showSplash = false;
+  late final int _splashDelaySeconds;
+  List<_NavItem> _navItems = <_NavItem>[];
+  int _currentIndex = 0;
 
   final String _siteUrl = '__SITE_URL__';
   final String _userAgent = '__USER_AGENT__';
@@ -53,32 +103,69 @@ class _WebViewScreenState extends State<WebViewScreen> {
       }
     } catch (_) {}
     _controller = ctrl;
+    // Splash timer
+    _splashDelaySeconds = int.tryParse(_splashDelay) ?? 0;
+    _showSplash = _splashDelaySeconds > 0;
+    if (_showSplash) {
+      Future.delayed(Duration(seconds: _splashDelaySeconds), () {
+        if (mounted) setState(() { _showSplash = false; });
+      });
+    }
+    // Navigation items
+    _navItems = _parseNavItems(_navItemsB64);
     _loadInitial();
   }
 
   Future<void> _loadInitial() async {
     try { await _controller.clearCache(); } catch (_) {}
     try {
-      final base = Uri.parse(_siteUrl);
+      final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
+      final base = Uri.parse(initialUrl);
       final uri = base.replace(
         queryParameters: {
           ...base.queryParameters,
           '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
         },
       );
-      await _controller.loadRequest(
-        WebViewRequest(
-          uri: uri,
-          method: WebViewRequestMethod.get,
-          headers: const {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        ),
-      );
+      // Use Uri-only signature for wider plugin compatibility
+      await _controller.loadRequest(uri);
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  List<_NavItem> _parseNavItems(String b64) {
+    if (b64.isEmpty) return [];
+    try {
+      final jsonStr = utf8.decode(base64.decode(b64));
+      final data = json.decode(jsonStr);
+      if (data is List) {
+        return data.map((e) {
+          final m = e is Map ? e : {};
+          final title = (m['title'] ?? m['name'] ?? '').toString();
+          final url = (m['url'] ?? m['link'] ?? '').toString();
+          final iconName = (m['icon'] ?? '').toString();
+          return _NavItem(title: title.isEmpty ? 'Item' : title, url: url.isEmpty ? _siteUrl : url, icon: _iconFromName(iconName));
+        }).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  IconData _iconFromName(String name) {
+    switch (name) {
+      case 'home': return Icons.home;
+      case 'shop': return Icons.storefront;
+      case 'cart': return Icons.shopping_cart;
+      case 'profile': return Icons.person;
+      case 'search': return Icons.search;
+      case 'star': return Icons.star;
+      case 'settings': return Icons.settings;
+      case 'favorite': return Icons.favorite;
+      case 'news': return Icons.article;
+      case 'category': return Icons.category;
+      case 'plus': return Icons.add;
+      default: return Icons.circle;
     }
   }
 
@@ -90,6 +177,35 @@ class _WebViewScreenState extends State<WebViewScreen> {
         children: [
           WebViewWidget(controller: _controller),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
+          if (_showSplash) Positioned.fill(
+            child: Container(
+              decoration: (_splashMode == 'image' && _splashBgImageUrl.isNotEmpty)
+                  ? BoxDecoration(image: DecorationImage(image: NetworkImage(_splashBgImageUrl), fit: BoxFit.cover))
+                  : BoxDecoration(color: _parseHexColor(_splashBgColorHex.isNotEmpty ? _splashBgColorHex : _themeColorHex)),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_splashDisplayLogo == '1' && _splashLogoImageUrl.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Image.network(_splashLogoImageUrl, width: 128, height: 128, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                      ),
+                    if (_splashTagline.isNotEmpty)
+                      Text(
+                        _splashTagline,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           if (_error != null) Positioned.fill(
             child: Container(
               color: Colors.white,
@@ -108,6 +224,30 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
+          ? BottomNavigationBar(
+              currentIndex: _currentIndex,
+              selectedItemColor: _parseHexColor(_themeColorHex),
+              onTap: (i) {
+                setState(() { _currentIndex = i; });
+                final url = _navItems[i].url;
+                try {
+                  _controller.loadRequest(Uri.parse(url));
+                } catch (_) {}
+              },
+              items: [
+                for (final it in _navItems)
+                  BottomNavigationBarItem(icon: Icon(it.icon), label: it.title),
+              ],
+            )
+          : null,
     );
   }
+}
+
+class _NavItem {
+  final String title;
+  final String url;
+  final IconData icon;
+  _NavItem({required this.title, required this.url, required this.icon});
 }

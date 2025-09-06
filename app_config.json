@@ -1,8 +1,8 @@
 {
-    "name": "store",
-    "site_url": "https://wp2all.com/store2031/",
-    "app_id": "com.wp2all.co",
-    "orientation": "portrait",
+    "name": "netmasr",
+    "site_url": "https://netmasr.com/",
+    "app_id": "com.netmasrr.co",
+    "orientation": "system",
     "language": "",
     "theme_color": "#2196f3",
     "pull_to_refresh": false,

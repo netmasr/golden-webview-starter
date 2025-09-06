@@ -17,10 +17,26 @@ workflows:
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
           ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
           USER_AGENT=${GWA_USER_AGENT:-""}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
+          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
+          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
+          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
+          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
+          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
+          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
+          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
+          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
+          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
       - name: Configure icon & splash (Android)
         script: |
           cd app
+          # Ensure app label under icon is updated
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          if [ -f android/app/src/main/res/values/strings.xml ]; then
+            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|" android/app/src/main/res/values/strings.xml || true
+          fi
           # Ensure INTERNET permission exists for release builds
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
@@ -85,10 +101,23 @@ workflows:
           SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
           ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          USER_AGENT=${GWA_USER_AGENT:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
       - name: Configure icon & splash (Android)
         script: |
           cd app
+          # Ensure app label under icon is updated
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          if [ -f android/app/src/main/res/values/strings.xml ]; then
+            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|" android/app/src/main/res/values/strings.xml || true
+          fi
+          # Ensure INTERNET permission exists for release builds
+          if [ -f android/app/src/main/AndroidManifest.xml ]; then
+            if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
+              sed -i '0,/<application/{s//<uses-permission android:name=\"android.permission.INTERNET\"\/>\n&/}' android/app/src/main/AndroidManifest.xml || true
+            fi
+          fi
           ICON_URL=${GWA_ICON_URL:-""}
           SPLASH_URL=${GWA_SPLASH_URL:-""}
           THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
@@ -141,10 +170,15 @@ workflows:
           SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
           ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          USER_AGENT=${GWA_USER_AGENT:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
       - name: Configure icon & splash (iOS)
         script: |
           cd app
+          # Set iOS display name under icon
+          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $APP_NAME" ios/Runner/Info.plist || true
           ICON_URL=${GWA_ICON_URL:-""}
           SPLASH_URL=${GWA_SPLASH_URL:-""}
           THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
@@ -205,7 +239,19 @@ workflows:
           SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
           ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          USER_AGENT=${GWA_USER_AGENT:-""}
+          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
+          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
+          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
+          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
+          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
+          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
+          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
+          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
+          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
+          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
+          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
+          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
       - name: Configure icon & splash (iOS)
         script: |
           cd app
