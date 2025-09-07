@@ -115,11 +115,8 @@ workflows:
           flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
           flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
     artifacts:
-      # Cover both when artifacts are searched from repo root or from within 'app/' directory
-      - app/build/**/outputs/**/*.aab
-      - app/build/**/outputs/**/*.apk
-      - build/**/outputs/**/*.aab
-      - build/**/outputs/**/*.apk
+      - app/build/outputs/bundle/**/*.aab
+      - app/build/outputs/flutter-apk/*.apk
       - app/symbols/**
 
   gwa-android-publish:
@@ -233,8 +230,8 @@ workflows:
           flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
           flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
     artifacts:
-      - app/build/**/outputs/**/*.aab
-      - app/build/**/outputs/**/*.apk
+      - app/build/outputs/bundle/**/*.aab
+      - app/build/outputs/flutter-apk/*.apk
       - app/symbols/**
   gwa-ios-build:
     name: Golden WebView iOS (Build Only)
