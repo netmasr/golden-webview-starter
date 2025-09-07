@@ -10,6 +10,8 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
+          flutter pub add webview_flutter_android
+          flutter pub add webview_flutter_wkwebview
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -187,6 +189,8 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
+          flutter pub add webview_flutter_android
+          flutter pub add webview_flutter_wkwebview
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -350,6 +354,8 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
+          flutter pub add webview_flutter_android
+          flutter pub add webview_flutter_wkwebview
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
