@@ -3,24 +3,38 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'dart:convert';
 
-// Helpers for theme/orientation/splash/navigation from placeholders
-const String _themeColorHex = '__THEME_COLOR__';
-const String _orientation = '__ORIENTATION__';
-const String _splashMode = '__SPLASH_BG_MODE__';
-const String _splashBgColorHex = '__SPLASH_BG_COLOR__';
-const String _splashTagline = '__SPLASH_TAGLINE__';
-const String _splashTextTheme = '__SPLASH_TEXT_THEME__';
-const String _splashDelay = '__SPLASH_DELAY__';
-const String _splashDisplayLogo = '__SPLASH_DISPLAY_LOGO__';
-const String _splashBgImageUrl = '__SPLASH_BG_IMAGE_URL__';
-const String _splashLogoImageUrl = '__SPLASH_LOGO_IMAGE_URL__';
-const String _navType = '__NAV_TYPE__';
-const String _navItemsB64 = '__NAV_ITEMS_B64__';
+// Config from --dart-define with safe defaults
+const String _appName = String.fromEnvironment('GWA_APP_NAME', defaultValue: 'GoldenApp');
+const String _themeColorHex = String.fromEnvironment('GWA_THEME_COLOR', defaultValue: '#2196f3');
+const String _orientation = String.fromEnvironment('GWA_PLATFORM_ORIENTATION', defaultValue: 'system');
+const String _envSiteUrl = String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://example.com/');
+const String _userAgent = String.fromEnvironment('GWA_USER_AGENT', defaultValue: '');
+// Splash
+const String _splashMode = String.fromEnvironment('GWA_SPLASH_BG_MODE', defaultValue: 'color');
+const String _splashBgColorHex = String.fromEnvironment('GWA_SPLASH_BG_COLOR', defaultValue: '');
+const String _splashTagline = String.fromEnvironment('GWA_SPLASH_TAGLINE', defaultValue: '');
+const String _splashTextTheme = String.fromEnvironment('GWA_SPLASH_TEXT_THEME', defaultValue: 'light');
+const String _splashDelay = String.fromEnvironment('GWA_SPLASH_DELAY', defaultValue: '3');
+const String _splashDisplayLogo = String.fromEnvironment('GWA_SPLASH_DISPLAY_LOGO', defaultValue: '0');
+const String _splashBgImageUrl = String.fromEnvironment('GWA_SPLASH_BACKGROUND_IMAGE_URL', defaultValue: '');
+const String _splashLogoImageUrl = String.fromEnvironment('GWA_SPLASH_LOGO_IMAGE_URL', defaultValue: '');
+// Navigation
+const String _navType = String.fromEnvironment('GWA_NAV_TYPE', defaultValue: 'classic');
+const String _navItemsB64 = String.fromEnvironment('GWA_NAV_ITEMS_B64', defaultValue: '');
 
 Color _parseHexColor(String hex) {
   var h = hex.replaceAll('#', '').toUpperCase();
   if (h.length == 6) h = 'FF' + h; // add alpha if missing
   return Color(int.parse(h, radix: 16));
+}
+
+String _normalizedSiteUrl(String u) {
+  var s = u.trim();
+  if (s.isEmpty) return 'https://example.com/';
+  if (!(s.startsWith('http://') || s.startsWith('https://'))) {
+    s = 'https://' + s;
+  }
+  return s;
 }
 
 Future<void> _applyOrientation() async {
@@ -55,7 +69,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final seed = _parseHexColor(_themeColorHex);
     return MaterialApp(
-      title: '__APP_NAME__',
+      title: _appName,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
@@ -82,8 +96,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   int _currentIndex = 0;
   bool _didRetry = false;
 
-  final String _siteUrl = '__SITE_URL__';
-  final String _userAgent = '__USER_AGENT__';
+  final String _siteUrl = _normalizedSiteUrl(_envSiteUrl);
 
   @override
   void initState() {
@@ -183,7 +196,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('__APP_NAME__')),
+      appBar: AppBar(title: Text(_appName)),
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),

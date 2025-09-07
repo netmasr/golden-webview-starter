@@ -10,29 +10,34 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
-          # write main.dart from template using env vars
+          # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          USER_AGENT=${GWA_USER_AGENT:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
-          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
-          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
-          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
-          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
-          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
+          # Normalize SITE_URL (add https:// if missing) and check reachability
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[Env] Effective SITE_URL=$SITE_URL"
+          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
+          fi
       - name: Configure icon & splash (Android)
         script: |
           cd app
           # Ensure app label under icon is updated
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          # Diagnostics for envs
+          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
+          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
+          echo "[Env] APP_NAME=$APP_NAME"
+          echo "[Env] SITE_URL=$SITE_URL"
+          echo "[Env] SPLASH_LOGO_IMAGE_URL=$SPLASH_LOGO_IMAGE_URL"
+          echo "[Env] SPLASH_DISPLAY_LOGO=$SPLASH_DISPLAY_LOGO"
           # Write strings.xml deterministically
           mkdir -p android/app/src/main/res/values
           printf "%s\n" \
@@ -40,6 +45,11 @@ workflows:
             "  <string name=\"app_name\">$APP_NAME</string>" \
             "</resources>" \
             > android/app/src/main/res/values/strings.xml
+          # Update applicationId if provided
+          if [ -n "$GWA_APP_ID" ]; then
+            sed -i 's/applicationId \".*\"/applicationId \"'"$GWA_APP_ID"'\"/' android/app/build.gradle || true
+            echo "[Check] applicationId set to $GWA_APP_ID"
+          fi
           # Normalize application label to use @string/app_name
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
@@ -75,6 +85,7 @@ workflows:
           if [ -n "$SPLASH_URL" ]; then
             echo "[Splash] Using full SPLASH_URL"
             curl -L "$SPLASH_URL" -o splash.png || true
+            test -f splash.png && ls -la splash.png || true
             flutter pub add dev:flutter_native_splash
             printf "%s\n" \
               "flutter_native_splash:" \
@@ -89,6 +100,7 @@ workflows:
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
             # Fallback: if only logo image provided, use it for native splash image
             curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
+            test -f splash.png && ls -la splash.png || true
             flutter pub add dev:flutter_native_splash
             printf "%s\n" \
               "flutter_native_splash:" \
@@ -112,8 +124,42 @@ workflows:
         script: |
           cd app
           mkdir -p symbols
-          flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
-          flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
+          flutter build appbundle --release \
+            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
+            --target-platform android-arm,android-arm64 \
+            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
+            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
+          flutter build apk --release --split-per-abi \
+            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
+            --target-platform android-arm,android-arm64 \
+            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
+            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
           echo "[List] build/app/outputs structure"
           ls -la build/app/outputs || true
           echo "[List] bundle/"
@@ -138,29 +184,34 @@ workflows:
           flutter create app
           cd app
           flutter pub add webview_flutter
-          # write main.dart from template using env vars
+          # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          USER_AGENT=${GWA_USER_AGENT:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
-          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
-          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
-          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
-          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
-          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
+          # Normalize SITE_URL (add https:// if missing) and check reachability
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[Env] Effective SITE_URL=$SITE_URL"
+          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
+          fi
       - name: Configure icon & splash (Android)
         script: |
           cd app
           # Ensure app label under icon is updated
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
+          # Diagnostics for envs
+          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
+          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
+          echo "[Env] APP_NAME=$APP_NAME"
+          echo "[Env] SITE_URL=$SITE_URL"
+          echo "[Env] SPLASH_LOGO_IMAGE_URL=$SPLASH_LOGO_IMAGE_URL"
+          echo "[Env] SPLASH_DISPLAY_LOGO=$SPLASH_DISPLAY_LOGO"
           # Write strings.xml deterministically
           mkdir -p android/app/src/main/res/values
           printf "%s\n" \
@@ -168,6 +219,11 @@ workflows:
             "  <string name=\"app_name\">$APP_NAME</string>" \
             "</resources>" \
             > android/app/src/main/res/values/strings.xml
+          # Update applicationId if provided
+          if [ -n "$GWA_APP_ID" ]; then
+            sed -i 's/applicationId \".*\"/applicationId \"'"$GWA_APP_ID"'\"/' android/app/build.gradle || true
+            echo "[Check] applicationId set to $GWA_APP_ID"
+          fi
           # Normalize application label to use @string/app_name
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
@@ -233,8 +289,48 @@ workflows:
         script: |
           cd app
           mkdir -p symbols
-          flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
-          flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
+          flutter build appbundle --release \
+            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
+            --target-platform android-arm,android-arm64 \
+            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
+            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
+          flutter build apk --release --split-per-abi \
+            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
+            --target-platform android-arm,android-arm64 \
+            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
+            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
+          echo "[List] build/app/outputs structure"
+          ls -la build/app/outputs || true
+          echo "[List] bundle/"
+          ls -la build/app/outputs/bundle || true
+          echo "[List] flutter-apk/"
+          ls -la build/app/outputs/flutter-apk || true
     artifacts:
       - app/build/app/outputs/bundle/**/*.aab
       - app/build/app/outputs/flutter-apk/*.apk
@@ -252,22 +348,18 @@ workflows:
           cd app
           flutter pub add webview_flutter
           mkdir -p lib
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          USER_AGENT=${GWA_USER_AGENT:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
-          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
-          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
-          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
-          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
-          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[Env] Effective SITE_URL=$SITE_URL"
+          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
+          fi
       - name: Configure icon & splash (iOS)
         script: |
           cd app
@@ -321,10 +413,40 @@ workflows:
           cd app
           if [ -n "$GWA_APPSTORE_KEY_ID" ] && [ -n "$GWA_APPSTORE_ISSUER_ID" ] && [ -n "$GWA_APPSTORE_PRIVATE_KEY" ]; then
             echo "iOS signing credentials detected. Building signed IPA."
-            flutter build ipa --release
+            flutter build ipa --release \
+              --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+              --dart-define=GWA_SITE_URL="$SITE_URL" \
+              --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+              --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+              --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+              --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+              --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+              --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+              --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+              --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+              --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+              --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+              --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+              --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+              --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
           else
             echo "No iOS signing credentials found. Building unsigned iOS app (no codesign)."
-            flutter build ios --release --no-codesign
+            flutter build ios --release --no-codesign \
+              --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+              --dart-define=GWA_SITE_URL="$SITE_URL" \
+              --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+              --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+              --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+              --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+              --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+              --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+              --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+              --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+              --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+              --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+              --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+              --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+              --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
           fi
     artifacts:
       - app/build/ios/ipa/*.ipa
@@ -345,22 +467,18 @@ workflows:
           cd app
           flutter pub add webview_flutter
           mkdir -p lib
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          ORIENTATION=${GWA_PLATFORM_ORIENTATION:-"system"}
-          USER_AGENT=${GWA_USER_AGENT:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          SPLASH_BG_MODE=${GWA_SPLASH_BG_MODE:-"color"}
-          SPLASH_BG_COLOR=${GWA_SPLASH_BG_COLOR:-"$THEME_COLOR"}
-          SPLASH_TAGLINE=${GWA_SPLASH_TAGLINE:-""}
-          SPLASH_TEXT_THEME=${GWA_SPLASH_TEXT_THEME:-"light"}
-          SPLASH_DELAY=${GWA_SPLASH_DELAY:-"3"}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          SPLASH_BG_IMAGE_URL=${GWA_SPLASH_BACKGROUND_IMAGE_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          NAV_TYPE=${GWA_NAV_TYPE:-"classic"}
-          NAV_ITEMS_B64=${GWA_NAV_ITEMS_B64:-""}
-          perl -0777 -pe "s!__APP_NAME__!$APP_NAME!g; s!__SITE_URL__!$SITE_URL!g; s!__ORIENTATION__!$ORIENTATION!g; s!__USER_AGENT__!$USER_AGENT!g; s!__THEME_COLOR__!$THEME_COLOR!g; s!__SPLASH_BG_MODE__!$SPLASH_BG_MODE!g; s!__SPLASH_BG_COLOR__!$SPLASH_BG_COLOR!g; s!__SPLASH_TAGLINE__!$SPLASH_TAGLINE!g; s!__SPLASH_TEXT_THEME__!$SPLASH_TEXT_THEME!g; s!__SPLASH_DELAY__!$SPLASH_DELAY!g; s!__SPLASH_DISPLAY_LOGO__!$SPLASH_DISPLAY_LOGO!g; s!__SPLASH_BG_IMAGE_URL__!$SPLASH_BG_IMAGE_URL!g; s!__SPLASH_LOGO_IMAGE_URL__!$SPLASH_LOGO_IMAGE_URL!g; s!__NAV_TYPE__!$NAV_TYPE!g; s!__NAV_ITEMS_B64__!$NAV_ITEMS_B64!g;" ../templates/flutter_main.dart.tmpl > lib/main.dart
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[Env] Effective SITE_URL=$SITE_URL"
+          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
+          fi
       - name: Configure icon & splash (iOS)
         script: |
           cd app
@@ -409,6 +527,21 @@ workflows:
       - name: Build iOS IPA (signed)
         script: |
           cd app
-          flutter build ipa --release
+          flutter build ipa --release \
+            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
+            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
+            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
+            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
+            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
+            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
+            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
+            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
+            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
     artifacts:
       - app/build/ios/ipa/*.ipa
