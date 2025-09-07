@@ -95,6 +95,9 @@ workflows:
               "  ios: true" \
               "  android_gravity: center" \
               "  ios_content_mode: center" \
+              "  android_12:" \
+              "    image: splash.png" \
+              "    color: \"$THEME_COLOR\"" \
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
