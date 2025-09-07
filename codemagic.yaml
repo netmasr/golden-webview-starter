@@ -114,9 +114,15 @@ workflows:
           mkdir -p symbols
           flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
           flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
+          echo "[List] build/app/outputs structure"
+          ls -la build/app/outputs || true
+          echo "[List] bundle/"
+          ls -la build/app/outputs/bundle || true
+          echo "[List] flutter-apk/"
+          ls -la build/app/outputs/flutter-apk || true
     artifacts:
-      - app/build/outputs/bundle/**/*.aab
-      - app/build/outputs/flutter-apk/*.apk
+      - app/build/app/outputs/bundle/**/*.aab
+      - app/build/app/outputs/flutter-apk/*.apk
       - app/symbols/**
 
   gwa-android-publish:
@@ -230,8 +236,8 @@ workflows:
           flutter build appbundle --release --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
           flutter build apk --release --split-per-abi --tree-shake-icons --obfuscate --split-debug-info=./symbols --target-platform android-arm,android-arm64
     artifacts:
-      - app/build/outputs/bundle/**/*.aab
-      - app/build/outputs/flutter-apk/*.apk
+      - app/build/app/outputs/bundle/**/*.aab
+      - app/build/app/outputs/flutter-apk/*.apk
       - app/symbols/**
   gwa-ios-build:
     name: Golden WebView iOS (Build Only)
