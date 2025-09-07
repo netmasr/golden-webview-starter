@@ -80,6 +80,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   late final int _splashDelaySeconds;
   List<_NavItem> _navItems = <_NavItem>[];
   int _currentIndex = 0;
+  bool _didRetry = false;
 
   final String _siteUrl = '__SITE_URL__';
   final String _userAgent = '__USER_AGENT__';
@@ -92,10 +93,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (url) => setState(() { _loading = true; _error = null; }),
         onPageFinished: (url) => setState(() { _loading = false; }),
-        onWebResourceError: (err) => setState(() {
-          _loading = false;
-          _error = 'Error ${err.errorCode}: ' + (err.description ?? 'Unknown error');
-        }),
+        onWebResourceError: (err) {
+          setState(() {
+            _loading = false;
+            _error = 'Error ${err.errorCode}: ' + (err.description ?? 'Unknown error');
+          });
+          _retryLoad();
+        },
       ));
     try {
       if (_userAgent.isNotEmpty) {
@@ -117,7 +121,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> _loadInitial() async {
-    try { await _controller.clearCache(); } catch (_) {}
     try {
       final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
       final base = Uri.parse(initialUrl);
@@ -132,6 +135,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  Future<void> _retryLoad() async {
+    if (_didRetry) return;
+    _didRetry = true;
+    try { await _controller.reload(); } catch (_) {}
+    await _loadInitial();
   }
 
   List<_NavItem> _parseNavItems(String b64) {
