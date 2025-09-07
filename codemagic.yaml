@@ -47,6 +47,19 @@ workflows:
             "  <string name=\"app_name\">$APP_NAME</string>" \
             "</resources>" \
             > android/app/src/main/res/values/strings.xml
+          # Also update any locale-specific strings.xml to ensure launcher shows the correct name
+          if command -v find >/dev/null 2>&1; then
+            while IFS= read -r -d '' F; do
+              if grep -q '<string name="app_name">' "$F"; then
+                sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"$APP_NAME"'</string>|' "$F" || true
+              else
+                # Insert app_name before closing resources
+                sed -i 's|</resources>|  <string name=\"app_name\">'"$APP_NAME"'</string>\n</resources>|' "$F" || true
+              fi
+            done < <(find android/app/src/main/res -type f -path '*/values*/strings.xml' -print0)
+          fi
+          echo "[Check] strings.xml entries for app_name:" || true
+          grep -R "<string name=\"app_name\"" -n android/app/src/main/res/values* || true
           # Update applicationId if provided
           if [ -n "$GWA_APP_ID" ]; then
             sed -i 's/applicationId \".*\"/applicationId \"'"$GWA_APP_ID"'\"/' android/app/build.gradle || true
@@ -60,6 +73,16 @@ workflows:
               sed -i 's|<application |<application android:label=\"@string/app_name\" |' android/app/src/main/AndroidManifest.xml || true
             fi
           fi
+          # Do the same for debug/profile manifests if present
+          for MF in android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml; do
+            if [ -f "$MF" ]; then
+              if grep -q 'android:label=' "$MF"; then
+                sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' "$MF" || true
+              else
+                sed -i 's|<application |<application android:label=\"@string/app_name\" |' "$MF" || true
+              fi
+            fi
+          done
           # Ensure INTERNET permission exists for release builds
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
@@ -292,6 +315,8 @@ workflows:
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           fi
+          echo "[Check] AndroidManifest labels after normalization:" || true
+          grep -R "android:label=\"@string/app_name\"" -n android/app/src/*/AndroidManifest.xml || true
       - name: Build Android AAB & APK
         script: |
           cd app
