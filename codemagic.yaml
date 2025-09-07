@@ -33,12 +33,20 @@ workflows:
           cd app
           # Ensure app label under icon is updated
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          if [ -f android/app/src/main/res/values/strings.xml ]; then
-            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|" android/app/src/main/res/values/strings.xml || true
-          fi
-          # Some Flutter templates hardcode label="app"; force-set to our app name
+          # Write strings.xml deterministically
+          mkdir -p android/app/src/main/res/values
+          printf "%s\n" \
+            "<resources>" \
+            "  <string name=\"app_name\">$APP_NAME</string>" \
+            "</resources>" \
+            > android/app/src/main/res/values/strings.xml
+          # Normalize application label to use @string/app_name
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APP_NAME\"|" android/app/src/main/AndroidManifest.xml || true
+            if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
+              sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' android/app/src/main/AndroidManifest.xml || true
+            else
+              sed -i 's|<application |<application android:label=\"@string/app_name\" |' android/app/src/main/AndroidManifest.xml || true
+            fi
           fi
           # Ensure INTERNET permission exists for release builds
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
@@ -65,6 +73,7 @@ workflows:
             flutter pub run flutter_launcher_icons:main || true
           fi
           if [ -n "$SPLASH_URL" ]; then
+            echo "[Splash] Using full SPLASH_URL"
             curl -L "$SPLASH_URL" -o splash.png || true
             flutter pub add dev:flutter_native_splash
             printf "%s\n" \
@@ -91,7 +100,14 @@ workflows:
               "  ios_content_mode: center" \
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
+          else
+            echo "[Splash] No SPLASH_URL or SPLASH_LOGO_IMAGE_URL provided"
           fi
+          echo "[Check] AndroidManifest label & cleartext"
+          grep -n 'android:label' android/app/src/main/AndroidManifest.xml || true
+          grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || true
+          echo "[Check] strings.xml app_name"
+          cat android/app/src/main/res/values/strings.xml || true
       - name: Build Android AAB & APK
         script: |
           cd app
@@ -142,12 +158,20 @@ workflows:
           cd app
           # Ensure app label under icon is updated
           APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          if [ -f android/app/src/main/res/values/strings.xml ]; then
-            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|" android/app/src/main/res/values/strings.xml || true
-          fi
-          # Some Flutter templates hardcode label="app"; force-set to our app name
+          # Write strings.xml deterministically
+          mkdir -p android/app/src/main/res/values
+          printf "%s\n" \
+            "<resources>" \
+            "  <string name=\"app_name\">$APP_NAME</string>" \
+            "</resources>" \
+            > android/app/src/main/res/values/strings.xml
+          # Normalize application label to use @string/app_name
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            sed -i "s|android:label=\"[^\"]*\"|android:label=\"$APP_NAME\"|" android/app/src/main/AndroidManifest.xml || true
+            if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
+              sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' android/app/src/main/AndroidManifest.xml || true
+            else
+              sed -i 's|<application |<application android:label=\"@string/app_name\" |' android/app/src/main/AndroidManifest.xml || true
+            fi
           fi
           # Ensure INTERNET permission exists for release builds
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
@@ -187,6 +211,7 @@ workflows:
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
+            echo "[Splash] Using LOGO fallback (SPLASH_LOGO_IMAGE_URL)"
             # Fallback: only logo provided
             curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
             flutter pub add dev:flutter_native_splash

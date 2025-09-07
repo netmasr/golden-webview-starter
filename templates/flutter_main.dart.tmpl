@@ -130,8 +130,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
           '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
         },
       );
-      // Use Uri-only signature for wider plugin compatibility
-      await _controller.loadRequest(uri);
+      // Clear cache/cookies and load with explicit no-cache headers
+      try { await _controller.clearCache(); } catch (_) {}
+      try { await WebViewCookieManager().clearCookies(); } catch (_) {}
+      await _controller.loadRequest(
+        WebViewRequest(
+          uri: uri,
+          method: WebViewRequestMethod.get,
+          headers: const {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        ),
+      );
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
     }
@@ -140,7 +152,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _retryLoad() async {
     if (_didRetry) return;
     _didRetry = true;
-    try { await _controller.reload(); } catch (_) {}
+    try { await _controller.clearCache(); } catch (_) {}
+    try { await WebViewCookieManager().clearCookies(); } catch (_) {}
     await _loadInitial();
   }
 
@@ -242,7 +255,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 setState(() { _currentIndex = i; });
                 final url = _navItems[i].url;
                 try {
-                  _controller.loadRequest(Uri.parse(url));
+                  final base = Uri.parse(url);
+                  final uri = base.replace(queryParameters: {
+                    ...base.queryParameters,
+                    '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
+                  });
+                  _controller.loadRequest(WebViewRequest(
+                    uri: uri,
+                    method: WebViewRequestMethod.get,
+                    headers: const {
+                      'Cache-Control': 'no-cache, no-store, must-revalidate',
+                      'Pragma': 'no-cache',
+                      'Expires': '0',
+                    },
+                  ));
                 } catch (_) {}
               },
               items: [
