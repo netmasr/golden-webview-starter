@@ -195,17 +195,29 @@ workflows:
             if [ -f "$manifest" ]; then
               echo "[FINAL FIX] Processing: $manifest"
               # Create backup
-              cp "$manifest" "$manifest.backup-$(date +%s)"
+              cp "$manifest" "$manifest.backup-$(date +%s)" 2>/dev/null || true
               
-              # Multiple replacement strategies
-              sed -i 's/android:label="app"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
-              sed -i 's/android:label='\''app'\''/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
-              sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+              # Direct and robust AndroidManifest.xml label fix
+              echo "[MANIFEST FIX] Current content before fix:"
+              grep -n "android:label" "$manifest" || echo "No android:label found"
               
-              # If no label exists, add it to application tag
-              if ! grep -q 'android:label' "$manifest"; then
-                sed -i 's|<application|<application android:label="'"$GWA_APP_NAME"'"|' "$manifest"
+              # Use perl for more reliable replacements
+              if command -v perl >/dev/null 2>&1; then
+                perl -i -pe "s/android:label=\"[^\"]*\"/android:label=\"$GWA_APP_NAME\"/g" "$manifest" 2>/dev/null || true
+                perl -i -pe "s/android:label='[^']*'/android:label=\"$GWA_APP_NAME\"/g" "$manifest" 2>/dev/null || true
+              else
+                # Fallback to simpler sed with escaping
+                sed -i "s/android:label=\"app\"/android:label=\"$GWA_APP_NAME\"/" "$manifest" 2>/dev/null || true
+                sed -i "s/android:label='app'/android:label=\"$GWA_APP_NAME\"/" "$manifest" 2>/dev/null || true
               fi
+              
+              # If no android:label exists, add it
+              if ! grep -q "android:label" "$manifest"; then
+                sed -i "s|<application|<application android:label=\"$GWA_APP_NAME\"|" "$manifest" 2>/dev/null || true
+              fi
+              
+              echo "[MANIFEST FIX] Content after fix:"
+              grep -n "android:label" "$manifest" || echo "No android:label found after fix"
               
               echo "[FINAL FIX] Updated $manifest"
               grep -n "android:label" "$manifest" || echo "No android:label found in $manifest"

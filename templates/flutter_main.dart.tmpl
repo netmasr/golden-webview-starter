@@ -93,10 +93,12 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
+  String _error = '';
   bool _loading = true;
-  String? _error;
+  int _splashDelaySeconds = 0;
   bool _showSplash = false;
-  late final int _splashDelaySeconds;
+  bool _showDebugInfo = false;
+  String _currentUrl = '';
   List<_NavItem> _navItems = <_NavItem>[];
   int _currentIndex = 0;
   bool _didRetry = false;
@@ -157,18 +159,66 @@ class _WebViewScreenState extends State<WebViewScreen> {
       final uaToUse = _userAgent.isNotEmpty ? _userAgent : _defaultMobileUA;
       ctrl.setUserAgent(uaToUse);
     } catch (_) {}
-    // Android-specific tweaks for broader site compatibility
-    if (ctrl.platform is AndroidWebViewController) {
-      final AndroidWebViewController aCtrl = ctrl.platform as AndroidWebViewController;
-      // Enable debugging and allow mixed content to avoid blocked HTTP subresources
+    // Configure WebView with enhanced settings
+    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await _controller.setBackgroundColor(Colors.white);
+    
+    // Add page load callbacks for debugging
+    await _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          print('[WebView] Page loading started: $url');
+          setState(() {
+            _loading = true;
+            _error = null;
+            _currentUrl = url;
+          });
+        },
+        onPageFinished: (String url) {
+          print('[WebView] Page loading finished: $url');
+          setState(() {
+            _loading = false;
+            _currentUrl = url;
+          });
+        },
+        onWebResourceError: (WebResourceError error) {
+          print('[WebView] Resource error: ${error.description} (${error.errorCode})');
+          if (error.errorCode == -2) { // net::ERR_NAME_NOT_RESOLVED
+            setState(() {
+              _error = 'No internet connection or invalid URL';
+              _loading = false;
+            });
+          } else {
+            setState(() {
+              _error = 'Loading error: ${error.description}';
+              _loading = false;
+            });
+          }
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          print('[WebView] Navigation request: ${request.url}');
+          return NavigationDecision.navigate;
+        },
+      ),
+    );
+    
+    // Android-specific controller setup
+    if (_controller.platform is AndroidWebViewController) {
+      final AndroidWebViewController aCtrl = _controller.platform as AndroidWebViewController;
       AndroidWebViewController.enableDebugging(true);
-      try { aCtrl.setMediaPlaybackRequiresUserGesture(false); } catch (_) {}
-      // Note: Most Android WebView configuration methods are not available in this version
-      // The following methods have been removed due to compatibility issues:
-      // setDomStorageEnabled, setDatabaseEnabled, setAllowFileAccess, 
-      // setAllowUniversalAccessFromFileURLs, setSafeBrowsingEnabled,
-      // setJavaScriptCanOpenWindowsAutomatically, setCacheMode, setGeolocationEnabled
+      try { 
+        aCtrl.setMediaPlaybackRequiresUserGesture(false);
+        // Force enable JavaScript and DOM storage
+        print('[WebView] Configured Android WebView settings');
+      } catch (e) {
+        print('[WebView] Android config error: $e');
+      }
     }
+    // Note: Most Android WebView configuration methods are not available in this version
+    // The following methods have been removed due to compatibility issues:
+    // setDomStorageEnabled, setDatabaseEnabled, setAllowFileAccess, 
+    // setAllowUniversalAccessFromFileURLs, setSafeBrowsingEnabled,
+    // setJavaScriptCanOpenWindowsAutomatically, setCacheMode, setGeolocationEnabled
     _controller = ctrl;
     // Splash timer
     _splashDelaySeconds = int.tryParse(_splashDelay) ?? 0;
@@ -187,20 +237,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
     try {
       final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
       print('[WebView] Loading URL: $initialUrl');
-      
-      // FORCE WebView settings for better compatibility
-      try {
-        await _controller.clearCache();
-        await _controller.clearLocalStorage();
-        print('[WebView] Cache cleared successfully');
-        
-        // Add multiple fallback URLs and strategies
-        final List<String> urlsToTry = [
-          initialUrl,
-          'https://www.google.com', // Test URL to verify WebView works
-          'https://httpbin.org/get', // Simple test endpoint
-          'data:text/html,<html><body><h1>WebView Test</h1><p>If you see this, WebView is working!</p></body></html>' // Inline HTML
-        ];
+            // ENHANCED WebView loading with multiple strategies
+        try {
+          await _controller.clearCache();
+          await _controller.clearLocalStorage();
+          print('[WebView] Cache cleared successfully');
+          
+          // Enhanced fallback URLs and strategies to resolve ERR_CACHE_MISS
+          final List<String> urlsToTry = [
+            initialUrl,
+            'https://www.google.com/search?q=test', // Test URL with parameters
+            'https://httpbin.org/user-agent', // Returns user agent info
+            'https://example.com', // Simple static site
+            'data:text/html,<html><head><meta charset="utf-8"><title>WebView Ready</title></head><body style="font-family:Arial;padding:20px;text-align:center;"><h1 style="color:green;">✅ WebView Loaded Successfully!</h1><p>The app is working correctly.</p><p><a href="$initialUrl" onclick="location.reload();return false;">Load Original Site</a></p></body></html>' // Enhanced inline HTML
+          ];
         
         bool loadSuccess = false;
         for (int i = 0; i < urlsToTry.length && !loadSuccess; i++) {
@@ -211,20 +261,58 @@ class _WebViewScreenState extends State<WebViewScreen> {
             if (testUrl.startsWith('data:')) {
               // Load inline HTML directly
               await _controller.loadHtmlString(testUrl.substring(16)); // Remove 'data:text/html,'
+              print('[WebView] Loaded inline HTML successfully');
             } else {
+              // Enhanced loading strategy with multiple attempts
               final uri = Uri.parse(testUrl);
-              final timestamp = DateTime.now().millisecondsSinceEpoch;
-              final cacheBustUrl = uri.hasQuery 
-                ? '$testUrl&_cb=$timestamp'
-                : '$testUrl?_cb=$timestamp';
+              bool urlLoaded = false;
               
-              final finalUri = Uri.parse(cacheBustUrl);
-              await _controller.loadRequest(finalUri, headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0',
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36',
-              });
+              // Try 1: Direct load without cache busting first
+              try {
+                await _controller.loadRequest(uri);
+                print('[WebView] Direct load succeeded for: $testUrl');
+                urlLoaded = true;
+              } catch (e) {
+                print('[WebView] Direct load failed: $e, trying cache-busting');
+                
+                // Try 2: Cache-busting load
+                try {
+                  final timestamp = DateTime.now().millisecondsSinceEpoch;
+                  final cacheBustUrl = uri.hasQuery 
+                    ? '$testUrl&_cb=$timestamp&_retry=1'
+                    : '$testUrl?_cb=$timestamp&_retry=1';
+                  
+                  final finalUri = Uri.parse(cacheBustUrl);
+                  await _controller.loadRequest(finalUri, headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                  });
+                  print('[WebView] Cache-busting load succeeded for: $cacheBustUrl');
+                  urlLoaded = true;
+                } catch (e2) {
+                  print('[WebView] Cache-busting load also failed: $e2');
+                  
+                  // Try 3: Simple load as last resort
+                  try {
+                    await _controller.loadRequest(Uri.parse(testUrl));
+                    print('[WebView] Simple retry succeeded for: $testUrl');
+                    urlLoaded = true;
+                  } catch (e3) {
+                    print('[WebView] All load attempts failed for: $testUrl - $e3');
+                  }
+                }
+              }
+              
+              if (!urlLoaded) {
+                throw Exception('Failed to load URL: $testUrl');
+              }
             }
             
             print('[WebView] Successfully loaded: $testUrl');
@@ -323,6 +411,59 @@ class _WebViewScreenState extends State<WebViewScreen> {
     } catch (_) {}
   }
 
+  Future<void> _testUrl(String url) async {
+    print('[WebView] Testing URL: $url');
+    try {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+      
+      await _controller.clearCache();
+      await _controller.clearLocalStorage();
+      
+      if (url.startsWith('data:text/html')) {
+        await _controller.loadHtmlString(url.substring(16));
+      } else {
+        await _controller.loadRequest(Uri.parse(url));
+      }
+      
+      print('[WebView] Test URL loaded successfully: $url');
+    } catch (e) {
+      print('[WebView] Test URL failed: $url - Error: $e');
+      setState(() {
+        _error = 'Test failed: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  void _toggleDebugInfo() {
+    setState(() {
+      _showDebugInfo = !_showDebugInfo;
+    });
+  }
+
+  Future<void> _loadTestUrl(String url) async {
+    print('[WebView] Loading test URL: $url');
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    
+    try {
+      await _controller.clearCache();
+      await _controller.clearLocalStorage();
+      await _controller.loadRequest(Uri.parse(url));
+    } catch (e) {
+      print('[WebView] Test URL load failed: $e');
+      setState(() {
+        _error = 'Test URL failed: $e';
+        _loading = false;
+      });
+    }
+  }
+
   List<_NavItem> _parseNavItems(String b64) {
     if (b64.isEmpty) return [];
     try {
@@ -396,29 +537,88 @@ class _WebViewScreenState extends State<WebViewScreen> {
             ),
           ),
           if (_error != null) Positioned.fill(
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.wifi_off, size: 48),
-                  const SizedBox(height: 12),
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  ElevatedButton(onPressed: _loadInitial, child: const Text('Reload')),
-                ],
-              ),
-            ),
+            child: _loading
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      const Text('Loading...', style: TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text(_siteUrl, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                )
+              : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                          const SizedBox(height: 12),
+                          Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text('URL: $_siteUrl', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(height: 12),
+                          ElevatedButton(onPressed: _loadInitial, child: const Text('Reload')),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: () => _loadTestUrl('https://www.google.com'),
+                            child: const Text('Test Google'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Container(
+                    color: Colors.white,
+                    child: Stack(
+                      children: [
+                        WebViewWidget(controller: _controller),
+                        // Debug overlay
+                        if (_showDebugInfo)
+                          Positioned(
+                            top: 40,
+                            right: 10,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('URL: $_currentUrl', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                  Text('Loading: $_loading', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                  Text('Error: ${_error ?? 'None'}', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        // Debug toggle button
+                        Positioned(
+                          top: 40,
+                          left: 10,
+                          child: FloatingActionButton.small(
+                            onPressed: () => setState(() => _showDebugInfo = !_showDebugInfo),
+                            child: const Icon(Icons.bug_report, size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
-        ],
-      ),
-      bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
+          bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
           ? BottomNavigationBar(
               currentIndex: _currentIndex,
               selectedItemColor: _parseHexColor(_themeColorHex),
               onTap: (i) {
                 setState(() { _currentIndex = i; });
+{{ ... }}
                 final url = _navItems[i].url;
                 try {
                   final base = Uri.parse(url);
