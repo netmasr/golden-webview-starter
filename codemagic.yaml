@@ -47,11 +47,33 @@ workflows:
           echo "</resources>" >> android/app/src/main/res/values/strings.xml
           # FORCE update AndroidManifest.xml with multiple approaches
           echo "[Fix] Updating AndroidManifest.xml with app name: $GWA_APP_NAME"
+          
+          # Method 1: Find and replace in all AndroidManifest.xml files
           find android -name "AndroidManifest.xml" -type f | while read -r manifest; do
             echo "[Fix] Processing manifest: $manifest"
             sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
             sed -i 's/android:label='\''[^'\'']*'\''/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+            # Also try without quotes
+            sed -i 's/android:label=[^[:space:]>]*/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
           done
+          
+          # Method 2: Direct file replacement for main AndroidManifest.xml
+          if [ -f "android/app/src/main/AndroidManifest.xml" ]; then
+            echo "[Fix] Direct update of main AndroidManifest.xml"
+            cp "android/app/src/main/AndroidManifest.xml" "android/app/src/main/AndroidManifest.xml.backup"
+            sed -i 's/android:label="app"/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
+            sed -i 's/android:label='\''app'\''/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
+            sed -i 's/android:label=app/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
+          fi
+          
+          # Method 3: Check if flutter_native_splash overwrites it and fix that
+          if [ -f "android/app/src/main/AndroidManifest.xml" ]; then
+            echo "[Fix] Post-splash AndroidManifest.xml fix"
+            # Run after splash generation
+            flutter pub run flutter_native_splash:create --android-manifest-path=android/app/src/main/AndroidManifest.xml || true
+            # Then fix it again
+            sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
+          fi
           
           # FORCE update ALL strings.xml files
           echo "[Fix] Force updating ALL strings.xml files"
@@ -165,6 +187,38 @@ workflows:
           else
             echo "[Splash] No SPLASH_URL or SPLASH_LOGO_IMAGE_URL provided"
           fi
+          # FINAL COMPREHENSIVE FIX - Apply after all splash generation
+          echo "[FINAL FIX] Comprehensive AndroidManifest.xml correction after splash generation"
+          
+          # Fix all AndroidManifest.xml files
+          find android -name "AndroidManifest.xml" -type f | while read -r manifest; do
+            if [ -f "$manifest" ]; then
+              echo "[FINAL FIX] Processing: $manifest"
+              # Create backup
+              cp "$manifest" "$manifest.backup-$(date +%s)"
+              
+              # Multiple replacement strategies
+              sed -i 's/android:label="app"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+              sed -i 's/android:label='\''app'\''/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+              sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+              
+              # If no label exists, add it to application tag
+              if ! grep -q 'android:label' "$manifest"; then
+                sed -i 's|<application|<application android:label="'"$GWA_APP_NAME"'"|' "$manifest"
+              fi
+              
+              echo "[FINAL FIX] Updated $manifest"
+              grep -n "android:label" "$manifest" || echo "No android:label found in $manifest"
+            fi
+          done
+          
+          # Ensure strings.xml has correct app_name
+          mkdir -p android/app/src/main/res/values
+          echo '<?xml version="1.0" encoding="utf-8"?>' > android/app/src/main/res/values/strings.xml
+          echo '<resources>' >> android/app/src/main/res/values/strings.xml
+          echo '  <string name="app_name">'"$GWA_APP_NAME"'</string>' >> android/app/src/main/res/values/strings.xml
+          echo '</resources>' >> android/app/src/main/res/values/strings.xml
+          
           echo "[Check] AndroidManifest label & cleartext"
           grep -n 'android:label' android/app/src/main/AndroidManifest.xml || true
           grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || true
