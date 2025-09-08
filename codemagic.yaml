@@ -52,8 +52,9 @@ workflows:
               sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"'"$APP_NAME"'"'</string>|' "$F" || true
             else
               sed -i 's|</resources>|  <string name=\"app_name\">'"'"$APP_NAME"'"'</string>\n</resources>|' "$F" || true
-            echo "[Check] applicationId set to $GWA_APP_ID"
-          fi
+            fi
+          done
+          echo "[Check] applicationId set to $GWA_APP_ID"
           # Force update AndroidManifest.xml files with app name
           for MF in android/app/src/main/AndroidManifest.xml android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml; do
             if [ -f "$MF" ]; then
