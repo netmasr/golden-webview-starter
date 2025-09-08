@@ -14,7 +14,19 @@ workflows:
           flutter pub add webview_flutter_wkwebview:^3.15.0
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
+          echo "[DEBUG] Using Flutter template from: ../templates/flutter_main.dart.tmpl"
+          echo "[DEBUG] Template file exists: $(test -f ../templates/flutter_main.dart.tmpl && echo 'YES' || echo 'NO')"
+          if [ -f ../templates/flutter_main.dart.tmpl ]; then
+            echo "[DEBUG] Template file size: $(wc -c < ../templates/flutter_main.dart.tmpl) bytes"
+            echo "[DEBUG] First 5 lines of template:"
+            head -5 ../templates/flutter_main.dart.tmpl
+          fi
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
+          echo "[DEBUG] main.dart written successfully. File size: $(wc -c < lib/main.dart) bytes"
+          echo "[DEBUG] Checking for required Flutter state variables in main.dart:"
+          grep -n "_showSplash\|_controller\|_loading\|_error" lib/main.dart || echo "[ERROR] Missing state variables in main.dart!"
+          echo "[DEBUG] Template version check:"
+          grep -n "Template Version" lib/main.dart || echo "[WARNING] No template version found"
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
