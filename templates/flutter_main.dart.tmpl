@@ -121,805 +121,199 @@ class _WebViewScreenState extends State<WebViewScreen> {
     // Set user agent
     try {
       final uaToUse = _userAgent.isNotEmpty ? _userAgent : _defaultMobileUA;
-      _controller.setUserAgent(uaToUse);
-    } catch (_) {}
-    
-    // Set navigation delegate with comprehensive error handling
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          print('[WebView] Page loading started: $url');
-          setState(() {
-            _loading = true;
-            _error = null;
-            _currentUrl = url;
-          });
-        },
-        onPageFinished: (String url) {
-          print('[WebView] Page loading finished: $url');
-          setState(() {
-            _loading = false;
-            _currentUrl = url;
-          });
-          _postLoadChecks();
-        },
-        onNavigationRequest: (request) {
-          return NavigationDecision.navigate;
-        },
-        onWebResourceError: (WebResourceError error) {
-          print('[WebView] Resource error: ${error.description} (${error.errorCode})');
-          
-          // Handle specific error codes
-          String errorMsg = 'Connection error';
-          if (error.errorCode == -2) {
-            errorMsg = 'Network error: Please check your internet connection';
-          } else if (error.errorCode == -6) {
-            errorMsg = 'Connection refused: Server may be down';
-          } else if (error.errorCode == -8) {
-            errorMsg = 'Timeout: Server is taking too long to respond';
-          } else {
-            errorMsg = 'Error ${error.errorCode}: ${error.description ?? "Unknown error"}';
-          }
-          
-          setState(() {
-            _loading = false;
-            _error = errorMsg;
-          });
-          
-          // Only retry for network-related errors
-          if (error.errorCode == -2 || error.errorCode == -6 || error.errorCode == -8) {
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted && _error != null) {
-                _retryLoad();
-              }
             });
-          }
-        },
-      ),
-    );
-    
-    // Android-specific controller setup
-    if (_controller.platform is AndroidWebViewController) {
-      final AndroidWebViewController aCtrl = _controller.platform as AndroidWebViewController;
-      try {
-        // Enable debugging - this is the only method that's widely supported
-        AndroidWebViewController.enableDebugging(true);
-        
-        // Set media playback policy - this is supported in most versions
-        aCtrl.setMediaPlaybackRequiresUserGesture(false);
-        
-        print('[WebView] Android-specific settings applied successfully');
-        
-        // Note: DOM storage, file access methods removed due to version compatibility
-        // These features are enabled by default in newer WebView versions
-        
-      } catch (e) {
-        print('[WebView] Android config error (non-critical): \$e');
-        // Continue anyway as these are optional enhancements
-      }
-    }
-    // Splash timer
-    _splashDelaySeconds = int.tryParse(_splashDelay) ?? 0;
-    _showSplash = _splashDelaySeconds > 0;
-    if (_showSplash) {
-      Future.delayed(Duration(seconds: _splashDelaySeconds), () {
-        if (mounted) setState(() { _showSplash = false; });
-      });
-    }
-    // Navigation items
-    _navItems = _parseNavItems(_navItemsB64);
-    _loadInitial();
-  }
-
-  Future<void> _loadInitial() async {
-    print('[WebView] Starting load initial process');
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    
-    try {
-      final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
-      print('[WebView] Target URL: $initialUrl');
-      
-      // Add delay to ensure WebView is ready
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      // Enhanced Strategy: Multi-level fallback approach
-      final testHtml = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>$_appName - اختبار التطبيق</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-align: center;
-            padding: 20px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow-x: hidden;
-        }
-        .container {
-            background: rgba(255,255,255,0.15);
-            padding: 40px 30px;
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-            max-width: 90vw;
-            width: 400px;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .logo {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-        .app-name {
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-        .status {
-            font-size: 16px;
-            margin-bottom: 30px;
-            opacity: 0.9;
-        }
-        .loading {
-            display: inline-block;
-            animation: pulse 1.5s ease-in-out infinite;
-            margin-bottom: 25px;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 2px;
-            overflow: hidden;
-            margin-bottom: 25px;
-        }
-        .progress-fill {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #00d4ff, #4facfe);
-            border-radius: 2px;
-            animation: progress 3s ease-out forwards;
-        }
-        .btn {
-            display: inline-block;
-            padding: 12px 25px;
-            margin: 8px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            text-decoration: none;
-            border-radius: 25px;
-            border: 2px solid rgba(255,255,255,0.3);
-            transition: all 0.3s ease;
-            font-weight: 600;
-            font-size: 14px;
-            min-width: 120px;
-        }
-        .btn:hover, .btn:active {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        .btn-primary {
-            background: linear-gradient(45deg, #00d4ff, #4facfe);
-            border-color: transparent;
-        }
-        .debug-info {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 20px;
-            font-family: monospace;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 1; }
-        }
-        @keyframes progress {
-            0% { width: 0%; }
-            30% { width: 30%; }
-            60% { width: 60%; }
-            100% { width: 100%; }
-        }
-        @media (max-width: 480px) {
-            .container { padding: 30px 20px; }
-            .app-name { font-size: 24px; }
-            .btn { padding: 10px 20px; font-size: 13px; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="logo">🌐</div>
-        <div class="app-name">$_appName</div>
-        <div class="status loading" id="status">جاري تحميل التطبيق...</div>
-        <div class="progress-bar">
-            <div class="progress-fill"></div>
-        </div>
-        <div id="buttons" style="display: none;">
-            <a href="#" class="btn btn-primary" onclick="loadOriginalSite(); return false;">🚀 تحميل الموقع</a>
-            <a href="https://www.google.com" class="btn" onclick="testConnection(); return false;">🧪 اختبار الاتصال</a>
-            <a href="https://httpbin.org/status/200" class="btn" onclick="testSimplePage(); return false;">📋 صفحة بسيطة</a>
-        </div>
-        <div class="debug-info" id="debug">
-            الهدف: $initialUrl<br>
-            WebView: نشط<br>
-            الحالة: جاري التحميل...
-        </div>
-    </div>
-    <script>
-        console.log('[WebView Test] Page loaded successfully');
-        
-        let loadAttempts = 0;
-        let debugInfo = document.getElementById('debug');
-        
-        function updateStatus(message, isError = false) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = isError ? 'status error' : 'status loading';
-            debugInfo.innerHTML += '<br>⏰ ' + new Date().toLocaleTimeString() + ': ' + message;
-            console.log('[WebView Test] ' + message);
-        }
-        
-        function showButtons() {
-            document.getElementById('buttons').style.display = 'block';
-        }
-        
-        function loadOriginalSite() {
-            loadAttempts++;
-            updateStatus('محاولة تحميل الموقع الأصلي... (' + loadAttempts + ')');
-            
-            try {
-                console.log('[WebView Test] Loading original site: $initialUrl');
-                window.location.href = '$initialUrl';
-            } catch (e) {
-                updateStatus('خطأ في تحميل الموقع: ' + e.message, true);
-                showButtons();
-            }
-        }
-        
-        function testConnection() {
-            updateStatus('اختبار الاتصال بـ Google...');
-            window.location.href = 'https://www.google.com';
-        }
-        
-        function testSimplePage() {
-            updateStatus('تحميل صفحة اختبار بسيطة...');
-            window.location.href = 'https://httpbin.org/status/200';
-        }
-        
-        function checkConnectivity() {
-            if (navigator.onLine) {
-                updateStatus('الاتصال بالإنترنت متاح ✅');
-                return true;
-            } else {
-                updateStatus('لا يوجد اتصال بالإنترنت ❌', true);
-                return false;
-            }
-        }
-        
-        // Auto-load sequence
-        setTimeout(function() {
-            if (checkConnectivity()) {
-                updateStatus('سيتم تحميل الموقع خلال ثانيتين...');
-                setTimeout(function() {
-                    loadOriginalSite();
-                }, 2000);
-            } else {
-                showButtons();
-            }
-        }, 1000);
-        
-        // Show buttons as fallback after 5 seconds
-        setTimeout(function() {
-            showButtons();
-        }, 5000);
-        
-        // Log WebView information
-        console.log('[WebView Test] User Agent:', navigator.userAgent);
-        console.log('[WebView Test] Target URL:', '$initialUrl');
-        console.log('[WebView Test] Online Status:', navigator.onLine);
-    </script>
-</body>
-</html>
-''';
-      
-      // Load test HTML first
-      try {
-        print('[WebView] Loading test HTML...');
-        await _controller.loadHtmlString(testHtml);
-        print('[WebView] Test HTML loaded successfully');
-        
-        // Enhanced loading strategy with multiple attempts
-        Future.delayed(const Duration(seconds: 3), () async {
-          if (mounted) {
-            print('[WebView] Attempting to load actual URL: $initialUrl');
-            await _loadWithFallback(initialUrl);
-          }
-        });
-        
-      } catch (e) {
-        print('[WebView] Failed to load test HTML: $e');
-        
-        // Fallback: Try direct URL load
-        try {
-          final uri = Uri.parse(initialUrl);
-          await _controller.loadRequest(uri);
-          print('[WebView] Direct URL load attempted');
-        } catch (e2) {
-          print('[WebView] Direct URL load also failed: $e2');
-          setState(() {
-            _error = 'خطأ في تحميل المحتوى. تحقق من الاتصال بالإنترنت.';
-            _loading = false;
-          });
-        }
-      }
-    } catch (e) {
-      print('[WebView] Load initial failed: $e');
-      setState(() {
-        _loading = false;
-        _error = 'خطأ في التحميل: $e';
-      });
-    } finally {
-      setState(() {
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _retryLoad() async {
-    print('[WebView] Retry attempt started');
-    setState(() { _loading = true; _error = null; });
-    
-    try {
-      // Force clear all WebView data
-      await _controller.clearCache();
-      await _controller.clearLocalStorage();
-      
-      // Reset retry flag for this attempt
-      _didRetry = false;
-      
-      // Wait longer before retry to ensure network stability
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Try loading again
-      await _loadInitial();
-    } catch (e) {
-      print('[WebView] Retry failed: $e');
-      setState(() {
-        _loading = false;
-        _error = 'Connection failed. Please check your internet and try again.';
-      });
-    }
-  }
-
-  Future<void> _loadWithFallback(String url) async {
-    print('[WebView] Starting fallback loading sequence for: $url');
-    
-    // Strategy 1: Try direct URL load
-    try {
-      await _controller.clearCache();
-      await _controller.clearLocalStorage();
-      final uri = Uri.parse(url);
-      await _controller.loadRequest(uri);
-      print('[WebView] Direct URL load successful');
-      return;
-    } catch (e) {
-      print('[WebView] Direct URL load failed: $e');
-    }
-    
-    // Strategy 2: Try with mobile user agent
-    try {
-      await _controller.setUserAgent('Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Mobile Safari/537.36');
-      final uri = Uri.parse(url);
-      await _controller.loadRequest(uri);
-      print('[WebView] Mobile user agent load successful');
-      return;
-    } catch (e) {
-      print('[WebView] Mobile user agent load failed: $e');
-    }
-    
-    // Strategy 3: Try with delayed load
-    await Future.delayed(const Duration(seconds: 2));
-    try {
-      final uri = Uri.parse(url);
-      await _controller.loadRequest(uri);
-      print('[WebView] Delayed load successful');
-      return;
-    } catch (e) {
-      print('[WebView] Delayed load failed: $e');
-    }
-    
-    // Strategy 4: Load fallback error page with manual navigation options
-    final errorHtml = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خطأ في التحميل - $_appName</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-align: center;
-            padding: 20px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        .container {
-            background: rgba(255,255,255,0.15);
-            padding: 40px 30px;
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-            max-width: 90vw;
-            width: 400px;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .error-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-            opacity: 0.8;
-        }
-        .app-name {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-        .error-message {
-            font-size: 16px;
-            margin-bottom: 30px;
-            opacity: 0.9;
-            line-height: 1.5;
-        }
-        .btn {
-            display: inline-block;
-            padding: 12px 25px;
-            margin: 8px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            text-decoration: none;
-            border-radius: 25px;
-            border: 2px solid rgba(255,255,255,0.3);
-            transition: all 0.3s ease;
-            font-weight: 600;
-            font-size: 14px;
-            min-width: 140px;
-        }
-        .btn:hover, .btn:active {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        .btn-retry {
-            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
-            border-color: transparent;
-        }
-        .btn-test {
-            background: linear-gradient(45deg, #00d4ff, #4facfe);
-            border-color: transparent;
-        }
-        .debug-info {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 20px;
-            font-family: monospace;
-            word-break: break-all;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error-icon">❌</div>
-        <div class="app-name">$_appName</div>
-        <div class="error-message">
-            تعذر تحميل الموقع المطلوب<br>
-            يرجى التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى
-        </div>
-        <a href="#" class="btn btn-retry" onclick="retryLoad(); return false;">🔄 إعادة المحاولة</a>
-        <a href="https://www.google.com" class="btn btn-test">🧪 اختبار Google</a>
-        <a href="$url" class="btn">🌐 فتح الموقع مباشرة</a>
-        <div class="debug-info">
-            الموقع المستهدف:<br>$url<br><br>
-            حالة الاتصال: <span id="connection-status">غير معروف</span><br>
-            وقت المحاولة: <span id="timestamp"></span>
-        </div>
-    </div>
-    <script>
-        console.log('[WebView Error] Fallback page loaded');
-        
-        document.getElementById('timestamp').textContent = new Date().toLocaleString('ar');
-        document.getElementById('connection-status').textContent = navigator.onLine ? 'متصل' : 'غير متصل';
-        
-        function retryLoad() {
-            console.log('[WebView Error] User requested retry');
-            window.location.reload();
-        }
-        
-        // Auto-retry after 10 seconds
-        setTimeout(function() {
-            console.log('[WebView Error] Auto-retry initiated');
-            retryLoad();
-        }, 10000);
-    </script>
-</body>
-</html>
-''';
-    
-    try {
-      await _controller.loadHtmlString(errorHtml);
-      print('[WebView] Fallback error page loaded');
-    } catch (e) {
-      print('[WebView] Even fallback error page failed: $e');
-    }
-  }
-
-  Future<void> _postLoadChecks() async {
-    if (_uaDesktopFallbackApplied) return;
-    try {
-      final res = await _controller.runJavaScriptReturningResult(
-        "(() => { try { const t = document.body ? document.body.innerText : ''; return t.slice(0, 2000); } catch (e) { return ''; } })()",
+          },
+          onPageFinished: (String url) {
+            print('[WebView] Page finished loading: $url');
+            setState(() {
+              _loading = false;
+            });
+          },
+          onWebResourceError: (WebResourceError error) {
+            print('[WebView] Resource error: ${error.description}');
+            setState(() {
+              _loading = false;
+              _error = 'خطأ في تحميل الموقع: ${error.description}';
+            });
+          },
+        ),
       );
-      final txt = (res ?? '').toString().toLowerCase();
-      if (txt.contains("isn't compatible") || txt.contains("isn\\u2019t compatible") || txt.contains('not compatible')) {
-        _uaDesktopFallbackApplied = true;
-        try { _controller.setUserAgent(_defaultDesktopUA); } catch (_) {}
-        try { await _controller.reload(); } catch (_) {}
-      }
-    } catch (_) {}
-  }
 
-  Future<void> _testUrl(String url) async {
-    print('[WebView] Testing URL: $url');
-    try {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-      
-      await _controller.clearCache();
-      await _controller.clearLocalStorage();
-      
-      if (url.startsWith('data:text/html')) {
-        await _controller.loadHtmlString(url.substring(16));
-      } else {
-        await _controller.loadRequest(Uri.parse(url));
+    // Simple Android-specific configuration - only use well-supported methods
+    if (controller.platform is AndroidWebViewController) {
+      try {
+        AndroidWebViewController.enableDebugging(true);
+        final androidController = controller.platform as AndroidWebViewController;
+        androidController.setMediaPlaybackRequiresUserGesture(false);
+        print('[WebView] Android WebView configured');
+      } catch (e) {
+        print('[WebView] Android configuration warning: $e');
       }
-      
-      print('[WebView] Test URL loaded successfully: $url');
-    } catch (e) {
-      print('[WebView] Test URL failed: $url - Error: $e');
-      setState(() {
-        _error = 'Test failed: $e';
-        _loading = false;
-      });
     }
+
+    _controller = controller;
+    _loadWebsite();
   }
 
-  void _toggleDebugInfo() {
-    setState(() {
-      _showDebugInfo = !_showDebugInfo;
-    });
-  }
-
-  Future<void> _loadTestUrl(String url) async {
-    print('[WebView] Loading test URL: $url');
+  void _loadWebsite() {
     setState(() {
       _loading = true;
       _error = null;
     });
+
+    print('[WebView] Loading website: $_siteUrl');
     
     try {
-      await _controller.clearCache();
-      await _controller.clearLocalStorage();
-      await _controller.loadRequest(Uri.parse(url));
+      _controller.loadRequest(Uri.parse(_siteUrl));
+      print('[WebView] Load request sent');
     } catch (e) {
-      print('[WebView] Test URL load failed: $e');
+      print('[WebView] Load failed: $e');
       setState(() {
-        _error = 'Test URL failed: $e';
         _loading = false;
+        _error = 'خطأ في تحميل الموقع: $e';
       });
     }
   }
 
-  List<_NavItem> _parseNavItems(String b64) {
-    if (b64.isEmpty) return [];
-    try {
-      final jsonStr = utf8.decode(base64.decode(b64));
-      final data = json.decode(jsonStr);
-      if (data is List) {
-        return data.map((e) {
-          final m = e is Map ? e : {};
-          final title = (m['title'] ?? m['name'] ?? '').toString();
-          final url = (m['url'] ?? m['link'] ?? '').toString();
-          final iconName = (m['icon'] ?? '').toString();
-          return _NavItem(title: title.isEmpty ? 'Item' : title, url: url.isEmpty ? _siteUrl : url, icon: _iconFromName(iconName));
-        }).toList();
-      }
-    } catch (_) {}
-    return [];
-  }
-
-  IconData _iconFromName(String name) {
-    switch (name) {
-      case 'home': return Icons.home;
-      case 'shop': return Icons.storefront;
-      case 'cart': return Icons.shopping_cart;
-      case 'profile': return Icons.person;
-      case 'search': return Icons.search;
-      case 'star': return Icons.star;
-      case 'settings': return Icons.settings;
-      case 'favorite': return Icons.favorite;
-      case 'news': return Icons.article;
-      case 'category': return Icons.category;
-      case 'plus': return Icons.add;
-      default: return Icons.circle;
-    }
+  void _retryLoad() {
+    print('[WebView] Retrying load...');
+    _loadWebsite();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_appName)),
-      body: Stack(
-        children: [
-          // Main WebView - always visible
-          Container(
-            color: Colors.white,
-            child: WebViewWidget(controller: _controller),
-          ),
-          
-          // Loading indicator
-          if (_loading) 
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(minHeight: 3),
-            ),
-          
-          // Splash screen overlay
-          if (_showSplash) 
-            Positioned.fill(
-              child: Container(
-                decoration: (_splashMode == 'image' && _splashBgImageUrl.isNotEmpty)
-                    ? BoxDecoration(image: DecorationImage(image: NetworkImage(_splashBgImageUrl), fit: BoxFit.cover))
-                    : BoxDecoration(color: _parseHexColor(_splashBgColorHex.isNotEmpty ? _splashBgColorHex : _themeColorHex)),
-                child: Center(
+      backgroundColor: const Color(0xFF2196F3),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Main WebView
+            if (!_showSplash)
+              WebViewWidget(controller: _controller),
+            
+            // Loading indicator
+            if (_loading && !_showSplash)
+              Container(
+                color: Colors.white,
+                child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_splashDisplayLogo == '1' && _splashLogoImageUrl.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: Image.network(_splashLogoImageUrl, width: 128, height: 128, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2196F3)),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'جاري التحميل...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black54,
                         ),
-                      if (_splashTagline.isNotEmpty)
-                        Text(
-                          _splashTagline,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
-          
-          // Error overlay (only shows when there's an error)
-          if (_error != null && !_loading) 
-            Positioned.fill(
-              child: Container(
+            
+            // Error screen
+            if (_error != null && !_showSplash)
+              Container(
                 color: Colors.white,
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(24.0),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                        const SizedBox(height: 12),
-                        Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                        const Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'خطأ في تحميل الموقع',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
                         const SizedBox(height: 8),
-                        Text('URL: $_siteUrl', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        const SizedBox(height: 12),
-                        ElevatedButton(onPressed: _loadInitial, child: const Text('إعادة التحميل')),
-                        const SizedBox(height: 8),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
                         ElevatedButton(
-                          onPressed: () => _loadTestUrl('https://www.google.com'),
-                          child: const Text('اختبار Google'),
+                          onPressed: _retryLoad,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2196F3),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                          ),
+                          child: const Text('إعادة المحاولة'),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-          
-          // Debug overlay
-          if (_showDebugInfo)
-            Positioned(
-              top: 40,
-              right: 10,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(4),
+            
+            // Splash screen
+            if (_showSplash)
+              Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('URL: $_currentUrl', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                    Text('Loading: $_loading', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                    Text('Error: ${_error ?? 'None'}', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                  ],
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.language,
+                        size: 80,
+                        color: Colors.white,
+                      ),
+                      SizedBox(height: 24),
+                      Text(
+                        'netmasr',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 24),
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'جاري التحميل...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          
-          // Debug toggle button
-          Positioned(
-            top: 40,
-            left: 10,
-            child: FloatingActionButton.small(
-              onPressed: () => setState(() => _showDebugInfo = !_showDebugInfo),
-              child: const Icon(Icons.bug_report, size: 16),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-      bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
-          ? BottomNavigationBar(
-              currentIndex: _currentIndex,
-              selectedItemColor: _parseHexColor(_themeColorHex),
-              onTap: (i) {
-                setState(() { _currentIndex = i; });
-                final url = _navItems[i].url;
-                try {
-                  final base = Uri.parse(url);
-                  final uri = base.replace(queryParameters: {
-                    ...base.queryParameters,
-                    '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-                  });
-                  _controller.loadRequest(uri);
-                } catch (_) {}
-              },
-              items: [
-                for (final it in _navItems)
-                  BottomNavigationBarItem(icon: Icon(it.icon), label: it.title),
-              ],
-            )
-          : null,
     );
   }
 }
