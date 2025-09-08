@@ -140,9 +140,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // Enable debugging and allow mixed content to avoid blocked HTTP subresources
       AndroidWebViewController.enableDebugging(true);
       try { aCtrl.setMediaPlaybackRequiresUserGesture(false); } catch (_) {}
-      try { aCtrl.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}
-      // Enable third-party cookies for better site compatibility
-      try { aCtrl.setWebViewClient(AndroidWebViewClient()); } catch (_) {}
     }
     _controller = ctrl;
     // Splash timer

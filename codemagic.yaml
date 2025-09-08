@@ -9,9 +9,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter:^4.4.4
-          flutter pub add webview_flutter_android:^3.12.1
-          flutter pub add webview_flutter_wkwebview:^3.9.4
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -211,9 +211,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter:^4.4.4
-          flutter pub add webview_flutter_android:^3.12.1
-          flutter pub add webview_flutter_wkwebview:^3.9.4
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -378,9 +378,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter:^4.4.4
-          flutter pub add webview_flutter_android:^3.12.1
-          flutter pub add webview_flutter_wkwebview:^3.9.4
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
