@@ -258,9 +258,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
         // Load a simple HTML page as absolute fallback
         await _controller.loadHtmlString('''
           <html>
-          <head><title>$GWA_APP_NAME</title></head>
+          <head><title>$_siteUrl</title></head>
           <body style="font-family: Arial; text-align: center; padding: 50px;">
-            <h1>Welcome to $GWA_APP_NAME</h1>
+            <h1>Welcome to App</h1>
             <p>WebView is working, but could not load the target website.</p>
             <p>Please check your internet connection and try again.</p>
             <button onclick="location.reload()">Retry</button>
