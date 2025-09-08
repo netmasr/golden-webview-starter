@@ -188,39 +188,92 @@ class _WebViewScreenState extends State<WebViewScreen> {
       final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
       print('[WebView] Loading URL: $initialUrl');
       
-      // Multiple strategies to avoid cache issues
+      // FORCE WebView settings for better compatibility
       try {
-        // Strategy 1: Clear all caches
         await _controller.clearCache();
         await _controller.clearLocalStorage();
         print('[WebView] Cache cleared successfully');
         
-        // Strategy 2: Add cache-busting parameter
-        final uri = Uri.parse(initialUrl);
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final cacheBustUrl = uri.hasQuery 
-          ? '$initialUrl&_cb=$timestamp'
-          : '$initialUrl?_cb=$timestamp';
+        // Add multiple fallback URLs and strategies
+        final List<String> urlsToTry = [
+          initialUrl,
+          'https://www.google.com', // Test URL to verify WebView works
+          'https://httpbin.org/get', // Simple test endpoint
+          'data:text/html,<html><body><h1>WebView Test</h1><p>If you see this, WebView is working!</p></body></html>' // Inline HTML
+        ];
         
-        // Strategy 3: Load with headers to bypass cache
-        final finalUri = Uri.parse(cacheBustUrl);
-        await _controller.loadRequest(finalUri, headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        });
-        print('[WebView] Request sent with cache-busting: $finalUri');
+        bool loadSuccess = false;
+        for (int i = 0; i < urlsToTry.length && !loadSuccess; i++) {
+          try {
+            final testUrl = urlsToTry[i];
+            print('[WebView] Trying URL [$i]: $testUrl');
+            
+            if (testUrl.startsWith('data:')) {
+              // Load inline HTML directly
+              await _controller.loadHtmlString(testUrl.substring(16)); // Remove 'data:text/html,'
+            } else {
+              final uri = Uri.parse(testUrl);
+              final timestamp = DateTime.now().millisecondsSinceEpoch;
+              final cacheBustUrl = uri.hasQuery 
+                ? '$testUrl&_cb=$timestamp'
+                : '$testUrl?_cb=$timestamp';
+              
+              final finalUri = Uri.parse(cacheBustUrl);
+              await _controller.loadRequest(finalUri, headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36',
+              });
+            }
+            
+            print('[WebView] Successfully loaded: $testUrl');
+            loadSuccess = true;
+            
+            // If we loaded a test URL, try to load the original after 2 seconds
+            if (i > 0) {
+              Future.delayed(const Duration(seconds: 2), () async {
+                try {
+                  final originalUri = Uri.parse(initialUrl);
+                  await _controller.loadRequest(originalUri);
+                  print('[WebView] Loaded original URL after test');
+                } catch (e) {
+                  print('[WebView] Could not load original URL: $e');
+                }
+              });
+            }
+            
+          } catch (e) {
+            print('[WebView] Failed to load URL [$i]: $e');
+            continue;
+          }
+        }
+        
+        if (!loadSuccess) {
+          throw Exception('All URL loading attempts failed');
+        }
         
       } catch (e) {
-        print('[WebView] Advanced load error: $e, trying simple load');
-        // Fallback: Simple load without cache busting
-        final uri = Uri.parse(initialUrl);
-        await _controller.loadRequest(uri);
+        print('[WebView] All loading strategies failed: $e');
+        // Load a simple HTML page as absolute fallback
+        await _controller.loadHtmlString('''
+          <html>
+          <head><title>$GWA_APP_NAME</title></head>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>Welcome to $GWA_APP_NAME</h1>
+            <p>WebView is working, but could not load the target website.</p>
+            <p>Please check your internet connection and try again.</p>
+            <button onclick="location.reload()">Retry</button>
+          </body>
+          </html>
+        ''');
       }
     } catch (e) {
-      print('[WebView] Load error: $e');
-      setState(() { _error = 'Network error: Please check your internet connection'; _loading = false; });
-      // Auto retry after 3 seconds
+      print('[WebView] Critical load error: $e');
+      setState(() { 
+        _error = 'WebView initialization failed. Please restart the app.'; 
+        _loading = false; 
+      });
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted && _error != null) {
           _retryLoad();

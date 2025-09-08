@@ -45,17 +45,35 @@ workflows:
           echo "<resources>" > android/app/src/main/res/values/strings.xml
           echo "  <string name=\"app_name\">$APP_NAME</string>" >> android/app/src/main/res/values/strings.xml
           echo "</resources>" >> android/app/src/main/res/values/strings.xml
-          # Update AndroidManifest.xml to use the correct app name
-          sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' android/app/src/main/AndroidManifest.xml
-          # Update strings.xml to use the correct app name
-          mkdir -p android/app/src/main/res/values
-          echo '<resources>' > android/app/src/main/res/values/strings.xml
-          echo '  <string name="app_name">'"$GWA_APP_NAME"'</string>' >> android/app/src/main/res/values/strings.xml
-          echo '</resources>' >> android/app/src/main/res/values/strings.xml
-          # Also update pubspec.yaml name field
+          # FORCE update AndroidManifest.xml with multiple approaches
+          echo "[Fix] Updating AndroidManifest.xml with app name: $GWA_APP_NAME"
+          find android -name "AndroidManifest.xml" -type f | while read -r manifest; do
+            echo "[Fix] Processing manifest: $manifest"
+            sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+            sed -i 's/android:label='\''[^'\'']*'\''/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
+          done
+          
+          # FORCE update ALL strings.xml files
+          echo "[Fix] Force updating ALL strings.xml files"
+          find android -name "strings.xml" -type f | while read -r strings_file; do
+            echo "[Fix] Processing strings file: $strings_file"
+            # Create backup and rewrite completely
+            echo '<resources>' > "$strings_file"
+            echo '  <string name="app_name">'"$GWA_APP_NAME"'</string>' >> "$strings_file"
+            echo '</resources>' >> "$strings_file"
+          done
+          
+          # Update pubspec.yaml name field
           sed -i 's/^name:.*/name: '"$(echo "$GWA_APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')"'/' pubspec.yaml
+          
           # Update app title in main.dart
           sed -i 's/title: '\''[^'\'']*'\''/title: '\'''"$GWA_APP_NAME"''\''/' lib/main.dart
+          
+          # Force update build.gradle app name
+          if [ -f "android/app/build.gradle" ]; then
+            echo "[Fix] Updating build.gradle"
+            sed -i 's/def flutterApplicationName = .*/def flutterApplicationName = "'"$GWA_APP_NAME"'"/' android/app/build.gradle
+          fi
           # Force update ALL strings.xml files including generated ones
           find android/app/src/main/res -name 'strings.xml' -type f | while read -r F; do
             echo "[Fix] Updating strings.xml: $F"
