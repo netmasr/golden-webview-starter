@@ -4,8 +4,8 @@
     "app_id": "com.netmasrr.co",
     "orientation": "system",
     "language": "",
-    "theme_color": "#2196f3",
-    "pull_to_refresh": false,
+    "theme_color": "",
+    "pull_to_refresh": true,
     "permissions": {
         "geolocation": false,
         "camera": false,
