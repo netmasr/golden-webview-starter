@@ -93,7 +93,7 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
-  String _error = '';
+  String? _error;
   bool _loading = true;
   int _splashDelaySeconds = 0;
   bool _showSplash = false;
@@ -160,11 +160,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ctrl.setUserAgent(uaToUse);
     } catch (_) {}
     // Configure WebView with enhanced settings
-    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-    await _controller.setBackgroundColor(Colors.white);
+    _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    _controller.setBackgroundColor(Colors.white);
     
     // Add page load callbacks for debugging
-    await _controller.setNavigationDelegate(
+    _controller.setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (String url) {
           print('[WebView] Page loading started: $url');
@@ -612,13 +612,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     ),
                   ),
           ),
-          bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
+        ),
+        bottomNavigationBar: (_navType == 'bottom-tabs' && _navItems.isNotEmpty)
           ? BottomNavigationBar(
               currentIndex: _currentIndex,
               selectedItemColor: _parseHexColor(_themeColorHex),
               onTap: (i) {
                 setState(() { _currentIndex = i; });
-{{ ... }}
                 final url = _navItems[i].url;
                 try {
                   final base = Uri.parse(url);
