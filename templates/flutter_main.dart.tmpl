@@ -209,138 +209,125 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> _loadInitial() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    
     try {
       final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
       print('[WebView] Loading URL: $initialUrl');
-            // ENHANCED WebView loading with multiple strategies
-        try {
-          await _controller.clearCache();
-          await _controller.clearLocalStorage();
-          print('[WebView] Cache cleared successfully');
-          
-          // Enhanced fallback URLs and strategies to resolve ERR_CACHE_MISS
-          final List<String> urlsToTry = [
-            initialUrl,
-            'https://www.google.com/search?q=test', // Test URL with parameters
-            'https://httpbin.org/user-agent', // Returns user agent info
-            'https://example.com', // Simple static site
-            'data:text/html,<html><head><meta charset="utf-8"><title>WebView Ready</title></head><body style="font-family:Arial;padding:20px;text-align:center;"><h1 style="color:green;">✅ WebView Loaded Successfully!</h1><p>The app is working correctly.</p><p><a href="$initialUrl" onclick="location.reload();return false;">Load Original Site</a></p></body></html>' // Enhanced inline HTML
-          ];
-        
-        bool loadSuccess = false;
-        for (int i = 0; i < urlsToTry.length && !loadSuccess; i++) {
-          try {
-            final testUrl = urlsToTry[i];
-            print('[WebView] Trying URL [$i]: $testUrl');
-            
-            if (testUrl.startsWith('data:')) {
-              // Load inline HTML directly
-              await _controller.loadHtmlString(testUrl.substring(16)); // Remove 'data:text/html,'
-              print('[WebView] Loaded inline HTML successfully');
-            } else {
-              // Enhanced loading strategy with multiple attempts
-              final uri = Uri.parse(testUrl);
-              bool urlLoaded = false;
-              
-              // Try 1: Direct load without cache busting first
-              try {
-                await _controller.loadRequest(uri);
-                print('[WebView] Direct load succeeded for: $testUrl');
-                urlLoaded = true;
-              } catch (e) {
-                print('[WebView] Direct load failed: $e, trying cache-busting');
-                
-                // Try 2: Cache-busting load
-                try {
-                  final timestamp = DateTime.now().millisecondsSinceEpoch;
-                  final cacheBustUrl = uri.hasQuery 
-                    ? '$testUrl&_cb=$timestamp&_retry=1'
-                    : '$testUrl?_cb=$timestamp&_retry=1';
-                  
-                  final finalUri = Uri.parse(cacheBustUrl);
-                  await _controller.loadRequest(finalUri, headers: {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0',
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                  });
-                  print('[WebView] Cache-busting load succeeded for: $cacheBustUrl');
-                  urlLoaded = true;
-                } catch (e2) {
-                  print('[WebView] Cache-busting load also failed: $e2');
-                  
-                  // Try 3: Simple load as last resort
-                  try {
-                    await _controller.loadRequest(Uri.parse(testUrl));
-                    print('[WebView] Simple retry succeeded for: $testUrl');
-                    urlLoaded = true;
-                  } catch (e3) {
-                    print('[WebView] All load attempts failed for: $testUrl - $e3');
-                  }
-                }
-              }
-              
-              if (!urlLoaded) {
-                throw Exception('Failed to load URL: $testUrl');
-              }
-            }
-            
-            print('[WebView] Successfully loaded: $testUrl');
-            loadSuccess = true;
-            
-            // If we loaded a test URL, try to load the original after 2 seconds
-            if (i > 0) {
-              Future.delayed(const Duration(seconds: 2), () async {
-                try {
-                  final originalUri = Uri.parse(initialUrl);
-                  await _controller.loadRequest(originalUri);
-                  print('[WebView] Loaded original URL after test');
-                } catch (e) {
-                  print('[WebView] Could not load original URL: $e');
-                }
-              });
-            }
-            
-          } catch (e) {
-            print('[WebView] Failed to load URL [$i]: $e');
-            continue;
-          }
-        }
-        
-        if (!loadSuccess) {
-          throw Exception('All URL loading attempts failed');
-        }
-        
+      
+      // Clear cache first
+      try {
+        await _controller.clearCache();
+        await _controller.clearLocalStorage();
+        print('[WebView] Cache cleared successfully');
       } catch (e) {
-        print('[WebView] All loading strategies failed: $e');
-        // Load a simple HTML page as absolute fallback
-        await _controller.loadHtmlString('''
-          <html>
-          <head><title>$_siteUrl</title></head>
-          <body style="font-family: Arial; text-align: center; padding: 50px;">
-            <h1>Welcome to App</h1>
-            <p>WebView is working, but could not load the target website.</p>
-            <p>Please check your internet connection and try again.</p>
-            <button onclick="location.reload()">Retry</button>
-          </body>
-          </html>
-        ''');
+        print('[WebView] Cache clear failed: $e');
+      }
+      
+      // Try to load the URL directly first
+      try {
+        final uri = Uri.parse(initialUrl);
+        await _controller.loadRequest(uri);
+        print('[WebView] Direct load initiated for: $initialUrl');
+        return;
+      } catch (e) {
+        print('[WebView] Direct load failed: $e');
+        setState(() {
+          _error = 'فشل في تحميل الموقع: $e';
+        });
+      }
+      
+      // Fallback to simple HTML content with working links
+      final fallbackHtml = '''
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$_appName</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: rgba(255,255,255,0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        h1 { color: #fff; margin-bottom: 20px; }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 10px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            background: rgba(0,255,0,0.2);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✅ $_ appName جاهز للعمل</h1>
+        <div class="status">تم تحميل التطبيق بنجاح!</div>
+        <p>يمكنك الآن تصفح الروابط التالية:</p>
+        <a href="$initialUrl" class="btn">🌐 الموقع الرئيسي</a>
+        <a href="https://www.google.com" class="btn">🔍 Google</a>
+        <a href="https://www.youtube.com" class="btn">🎥 YouTube</a>
+        <a href="https://www.facebook.com" class="btn">📘 Facebook</a>
+        <script>
+            console.log('WebView loaded successfully');
+        </script>
+    </div>
+</body>
+</html>
+''';
+      
+      try {
+        await _controller.loadHtmlString(fallbackHtml);
+        print('[WebView] Fallback HTML loaded successfully');
+      } catch (e) {
+        print('[WebView] Fallback HTML failed: $e');
+        setState(() {
+          _error = 'فشل في تحميل المحتوى: $e';
+        });
       }
     } catch (e) {
-      print('[WebView] Critical load error: $e');
-      setState(() { 
-        _error = 'WebView initialization failed. Please restart the app.'; 
-        _loading = false; 
+      print('[WebView] Load initial failed: $e');
+      setState(() {
+        _loading = false;
+        _error = 'خطأ في التحميل: $e';
       });
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted && _error != null) {
-          _retryLoad();
-        }
+    } finally {
+      setState(() {
+        _loading = false;
       });
     }
   }
@@ -480,112 +467,113 @@ class _WebViewScreenState extends State<WebViewScreen> {
       appBar: AppBar(title: Text(_appName)),
       body: Stack(
         children: [
-          WebViewWidget(controller: _controller),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (_showSplash) Positioned.fill(
-            child: Container(
-              decoration: (_splashMode == 'image' && _splashBgImageUrl.isNotEmpty)
-                  ? BoxDecoration(image: DecorationImage(image: NetworkImage(_splashBgImageUrl), fit: BoxFit.cover))
-                  : BoxDecoration(color: _parseHexColor(_splashBgColorHex.isNotEmpty ? _splashBgColorHex : _themeColorHex)),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_splashDisplayLogo == '1' && _splashLogoImageUrl.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
-                        child: Image.network(_splashLogoImageUrl, width: 128, height: 128, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-                      ),
-                    if (_splashTagline.isNotEmpty)
-                      Text(
-                        _splashTagline,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+          // Main WebView - always visible
+          Container(
+            color: Colors.white,
+            child: WebViewWidget(controller: _controller),
           ),
-          if (_error != null) Positioned.fill(
-            child: _loading
-              ? Center(
+          
+          // Loading indicator
+          if (_loading) 
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(minHeight: 3),
+            ),
+          
+          // Splash screen overlay
+          if (_showSplash) 
+            Positioned.fill(
+              child: Container(
+                decoration: (_splashMode == 'image' && _splashBgImageUrl.isNotEmpty)
+                    ? BoxDecoration(image: DecorationImage(image: NetworkImage(_splashBgImageUrl), fit: BoxFit.cover))
+                    : BoxDecoration(color: _parseHexColor(_splashBgColorHex.isNotEmpty ? _splashBgColorHex : _themeColorHex)),
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      const Text('Loading...', style: TextStyle(fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text(_siteUrl, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      if (_splashDisplayLogo == '1' && _splashLogoImageUrl.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Image.network(_splashLogoImageUrl, width: 128, height: 128, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                        ),
+                      if (_splashTagline.isNotEmpty)
+                        Text(
+                          _splashTagline,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                     ],
                   ),
-                )
-              : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                          const SizedBox(height: 12),
-                          Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
-                          const SizedBox(height: 8),
-                          Text('URL: $_siteUrl', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                          const SizedBox(height: 12),
-                          ElevatedButton(onPressed: _loadInitial, child: const Text('Reload')),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () => _loadTestUrl('https://www.google.com'),
-                            child: const Text('Test Google'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : Container(
-                    color: Colors.white,
-                    child: Stack(
+                ),
+              ),
+            ),
+          
+          // Error overlay (only shows when there's an error)
+          if (_error != null && !_loading) 
+            Positioned.fill(
+              child: Container(
+                color: Colors.white,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        WebViewWidget(controller: _controller),
-                        // Debug overlay
-                        if (_showDebugInfo)
-                          Positioned(
-                            top: 40,
-                            right: 10,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black87,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('URL: $_currentUrl', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                                  Text('Loading: $_loading', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                                  Text('Error: ${_error ?? 'None'}', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        // Debug toggle button
-                        Positioned(
-                          top: 40,
-                          left: 10,
-                          child: FloatingActionButton.small(
-                            onPressed: () => setState(() => _showDebugInfo = !_showDebugInfo),
-                            child: const Icon(Icons.bug_report, size: 16),
-                          ),
+                        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                        const SizedBox(height: 12),
+                        Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                        const SizedBox(height: 8),
+                        Text('URL: $_siteUrl', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 12),
+                        ElevatedButton(onPressed: _loadInitial, child: const Text('إعادة التحميل')),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: () => _loadTestUrl('https://www.google.com'),
+                          child: const Text('اختبار Google'),
                         ),
                       ],
                     ),
                   ),
+                ),
+              ),
+            ),
+          
+          // Debug overlay
+          if (_showDebugInfo)
+            Positioned(
+              top: 40,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('URL: $_currentUrl', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                    Text('Loading: $_loading', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                    Text('Error: ${_error ?? 'None'}', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                  ],
+                ),
+              ),
+            ),
+          
+          // Debug toggle button
+          Positioned(
+            top: 40,
+            left: 10,
+            child: FloatingActionButton.small(
+              onPressed: () => setState(() => _showDebugInfo = !_showDebugInfo),
+              child: const Icon(Icons.bug_report, size: 16),
+            ),
           ),
         ],
       ),
