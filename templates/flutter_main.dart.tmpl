@@ -1,6 +1,11 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'dart:io';
@@ -91,7 +96,7 @@ class WebViewScreen extends StatefulWidget {
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _WebViewScreenState extends State<WebViewScreen> {
+class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserver {
   late final WebViewController _controller;
   String? _error;
   bool _loading = true;
@@ -103,99 +108,41 @@ class _WebViewScreenState extends State<WebViewScreen> {
   int _currentIndex = 0;
   bool _didRetry = false;
   bool _uaDesktopFallbackApplied = false;
+  bool _isConnected = true;
+  int _loadProgress = 0;
+  Timer? _timeoutTimer;
 
   final String _siteUrl = _normalizedSiteUrl(_envSiteUrl);
 
   @override
   void initState() {
     super.initState();
-    final PlatformWebViewControllerCreationParams params = Platform.isAndroid
-        ? AndroidWebViewControllerCreationParams()
-        : PlatformWebViewControllerCreationParams();
-    _controller = WebViewController.fromPlatformCreationParams(params);
-    
-    // Configure WebView with enhanced settings
-    _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-    _controller.setBackgroundColor(Colors.white);
-    
-    // Set user agent
-    try {
-      final uaToUse = _userAgent.isNotEmpty ? _userAgent : _defaultMobileUA;
-      _controller.setUserAgent(uaToUse);
-    } catch (_) {}
-    
-    // Set navigation delegate with comprehensive error handling
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          print('[WebView] Page loading started: $url');
-          setState(() {
-            _loading = true;
-            _error = null;
-            _currentUrl = url;
-          });
-        },
-        onPageFinished: (String url) {
-          print('[WebView] Page loading finished: $url');
-          setState(() {
-            _loading = false;
-            _currentUrl = url;
-          });
-          _postLoadChecks();
-        },
-        onNavigationRequest: (request) {
-          return NavigationDecision.navigate;
-        },
-        onWebResourceError: (WebResourceError error) {
-          print('[WebView] Resource error: ${error.description} (${error.errorCode})');
-          
-          // Handle specific error codes
-          String errorMsg = 'Connection error';
-          if (error.errorCode == -2) {
-            errorMsg = 'Network error: Please check your internet connection';
-          } else if (error.errorCode == -6) {
-            errorMsg = 'Connection refused: Server may be down';
-          } else if (error.errorCode == -8) {
-            errorMsg = 'Timeout: Server is taking too long to respond';
-          } else {
-            errorMsg = 'Error ${error.errorCode}: ${error.description ?? "Unknown error"}';
-          }
-          
-          setState(() {
-            _loading = false;
-            _error = errorMsg;
-          });
-          
-          // Only retry for network-related errors
-          if (error.errorCode == -2 || error.errorCode == -6 || error.errorCode == -8) {
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted && _error != null) {
-                _retryLoad();
-              }
-            });
-          }
-        },
-      ),
-    );
-    
-    // Android-specific controller setup
-    if (_controller.platform is AndroidWebViewController) {
-      final AndroidWebViewController aCtrl = _controller.platform as AndroidWebViewController;
-      AndroidWebViewController.enableDebugging(true);
-      try { 
-        aCtrl.setMediaPlaybackRequiresUserGesture(false);
-        // Force enable JavaScript and DOM storage
-        print('[WebView] Configured Android WebView settings');
-      } catch (e) {
-        print('[WebView] Android config error: $e');
-      }
+    WidgetsBinding.instance.addObserver(this);
+    _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _error != null) {
+      _retryLoad();
     }
-    // Note: Most Android WebView configuration methods are not available in this version
-    // The following methods have been removed due to compatibility issues:
-    // setDomStorageEnabled, setDatabaseEnabled, setAllowFileAccess, 
-    // setAllowUniversalAccessFromFileURLs, setSafeBrowsingEnabled,
-    // setJavaScriptCanOpenWindowsAutomatically, setCacheMode, setGeolocationEnabled
-    // Splash timer
+  }
+
+  Future<void> _initializeApp() async {
+    // Check connectivity first
+    await _checkConnectivity();
+    
+    // Initialize WebView
+    _initializeWebView();
+    
+    // Initialize navigation and splash
     _splashDelaySeconds = int.tryParse(_splashDelay) ?? 0;
     _showSplash = _splashDelaySeconds > 0;
     if (_showSplash) {
@@ -203,9 +150,119 @@ class _WebViewScreenState extends State<WebViewScreen> {
         if (mounted) setState(() { _showSplash = false; });
       });
     }
-    // Navigation items
     _navItems = _parseNavItems(_navItemsB64);
-    _loadInitial();
+    
+    // Start loading with timeout
+    _loadWithTimeout();
+  }
+
+  Future<void> _checkConnectivity() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      setState(() {
+        _isConnected = connectivityResult != ConnectivityResult.none;
+      });
+      
+      // Listen for connectivity changes
+      Connectivity().onConnectivityChanged.listen((ConnectivityResult result) {
+        final wasConnected = _isConnected;
+        setState(() {
+          _isConnected = result != ConnectivityResult.none;
+        });
+        
+        // Retry loading if connection restored
+        if (!wasConnected && _isConnected && _error != null) {
+          Future.delayed(const Duration(seconds: 2), _retryLoad);
+        }
+      });
+    } catch (e) {
+      print('[Connectivity] Check failed: $e');
+      setState(() {
+        _isConnected = false;
+      });
+    }
+  }
+
+  void _initializeWebView() {
+    late final PlatformWebViewControllerCreationParams params;
+    
+    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+      params = WebKitWebViewControllerCreationParams(
+        allowsInlineMediaPlaybook: true,
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
+    } else {
+      params = const PlatformWebViewControllerCreationParams();
+    }
+
+    _controller = WebViewController.fromPlatformCreationParams(params);
+    _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    _controller.setBackgroundColor(Colors.white);
+    _controller.setUserAgent('Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 GoldenWebViewApp/1.0');
+    
+    _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onProgress: (int progress) {
+          setState(() {
+            _loadProgress = progress;
+          });
+          print('[WebView] Loading progress: $progress%');
+        },
+        onPageStarted: (String url) {
+          _timeoutTimer?.cancel();
+          setState(() {
+            _loading = true;
+            _error = null;
+            _currentUrl = url;
+            _loadProgress = 0;
+          });
+          print('[WebView] Page started loading: $url');
+          
+          // Start timeout timer
+          _timeoutTimer = Timer(const Duration(seconds: 30), () {
+            if (_loading && mounted) {
+              setState(() {
+                _error = 'انتهت مهلة التحميل - الصفحة تستغرق وقتاً طويلاً';
+                _loading = false;
+              });
+            }
+          });
+        },
+        onPageFinished: (String url) {
+          _timeoutTimer?.cancel();
+          setState(() {
+            _loading = false;
+            _currentUrl = url;
+            _loadProgress = 100;
+          });
+          print('[WebView] Page finished loading: $url');
+          _verifyPageContent();
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          print('[WebView] Navigation request: ${request.url}');
+          return NavigationDecision.navigate;
+        },
+        onWebResourceError: (WebResourceError error) {
+          _timeoutTimer?.cancel();
+          print('[WebView] WebView error: ${error.description} (Code: ${error.errorCode})');
+          setState(() {
+            _loading = false;
+            _error = _getErrorMessage(error);
+          });
+        },
+        onUrlChange: (UrlChange change) {
+          print('[WebView] URL changed to: ${change.url}');
+        },
+      ),
+    );
+
+    // Configure platform-specific settings
+    if (_controller.platform is AndroidWebViewController) {
+      AndroidWebViewController.enableDebugging(true);
+      (_controller.platform as AndroidWebViewController)
+        ..setMediaPlaybackRequiresUserGesture(false)
+        ..setTextZoom(100);
+    }
   }
 
   Future<void> _loadInitial() async {
@@ -243,69 +300,184 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // Fallback to simple HTML content with working links
       final fallbackHtml = '''
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>$_appName</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        * {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Arial', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            text-align: center;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
+            padding: 20px;
+            line-height: 1.6;
         }
+        
         .container {
             background: rgba(255,255,255,0.1);
-            padding: 30px;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
+            padding: 40px 30px;
+            border-radius: 20px;
+            backdrop-filter: blur(15px);
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
         }
-        h1 { color: #fff; margin-bottom: 20px; }
+        
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(76, 175, 80, 0.3);
+            border-radius: 12px;
+            border: 2px solid rgba(76, 175, 80, 0.5);
+            font-size: 16px;
+        }
+        
         .btn {
             display: inline-block;
-            padding: 12px 24px;
-            margin: 10px;
+            padding: 15px 25px;
+            margin: 8px 5px;
             background: rgba(255,255,255,0.2);
             color: white;
             text-decoration: none;
             border-radius: 25px;
             border: 2px solid rgba(255,255,255,0.3);
             transition: all 0.3s ease;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            min-width: 120px;
         }
-        .btn:hover {
+        
+        .btn:hover, .btn:active {
             background: rgba(255,255,255,0.3);
             border-color: rgba(255,255,255,0.5);
+            transform: translateY(-2px);
         }
-        .status {
+        
+        .btn-primary {
+            background: rgba(33, 150, 243, 0.8);
+            border-color: rgba(33, 150, 243, 1);
+        }
+        
+        .btn-primary:hover {
+            background: rgba(33, 150, 243, 1);
+        }
+        
+        .emoji {
+            font-size: 20px;
+            margin-right: 8px;
+        }
+        
+        .links-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
             margin: 20px 0;
-            padding: 10px;
-            background: rgba(0,255,0,0.2);
-            border-radius: 8px;
+        }
+        
+        @media (max-width: 480px) {
+            .links-grid {
+                grid-template-columns: 1fr;
+            }
+            .container {
+                padding: 30px 20px;
+            }
+        }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>✅ $_appName جاهز للعمل</h1>
-        <div class="status">تم تحميل التطبيق بنجاح!</div>
-        <p>يمكنك الآن تصفح الروابط التالية:</p>
-        <a href="$initialUrl" class="btn">🌐 الموقع الرئيسي</a>
-        <a href="https://www.google.com" class="btn">🔍 Google</a>
-        <a href="https://www.youtube.com" class="btn">🎥 YouTube</a>
-        <a href="https://www.facebook.com" class="btn">📘 Facebook</a>
-        <script>
-            console.log('WebView loaded successfully');
-        </script>
+        <div class="logo">🌐</div>
+        <h1>$_appName</h1>
+        
+        <div class="status">
+            WebView جاهز للعمل!<br>التطبيق يعمل بشكل صحيح
+        </div>
+        
+        <div style="margin: 25px 0;">
+            <a href="$initialUrl" class="btn btn-primary">
+                <span class="emoji">🏠</span>الموقع الرئيسي
+            </a>
+        </div>
+        
+        <div class="links-grid">
+            <a href="https://www.google.com" class="btn">
+                <span class="emoji">🔍</span>Google
+            </a>
+            <a href="https://www.youtube.com" class="btn">
+                <span class="emoji">🎥</span>YouTube
+            </a>
+            <a href="https://www.facebook.com" class="btn">
+                <span class="emoji">📘</span>Facebook
+            </a>
+            <a href="https://www.twitter.com" class="btn">
+                <span class="emoji">🐦</span>Twitter
+            </a>
+        </div>
+        
+        <div class="footer">
+            إصدار 1.0 - يعمل بتقنية Flutter WebView
+        </div>
     </div>
+    
+    <script>
+        console.log('GoldenWebView loaded successfully');
+        console.log('Primary URL: $initialUrl');
+        console.log('User Agent:', navigator.userAgent);
+        
+        // Handle link clicks
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                console.log('Navigating to:', this.href);
+                // Add visual feedback
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+        
+        // Test connectivity
+        fetch('https://www.google.com/favicon.ico', { mode: 'no-cors' })
+            .then(() => console.log('Internet connection: OK'))
+            .catch(() => console.log('Internet connection: OFFLINE'));
+    </script>
 </body>
 </html>
 ''';
@@ -355,6 +527,52 @@ class _WebViewScreenState extends State<WebViewScreen> {
         _loading = false;
         _error = 'Connection failed. Please check your internet and try again.';
       });
+    }
+  }
+
+  Future<void> _loadWithTimeout() async {
+    if (!_isConnected) {
+      setState(() {
+        _error = 'لا يوجد اتصال بالإنترنت';
+        _loading = false;
+      });
+      return;
+    }
+    await _loadInitial();
+  }
+
+  Future<void> _verifyPageContent() async {
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+      final result = await _controller.runJavaScriptReturningResult(
+        "(() => { try { const t = document.body ? document.body.innerText : ''; return JSON.stringify({textLength: t.length, hasContent: t.length > 10}); } catch (e) { return JSON.stringify({error: e.toString()}); } })()",
+      );
+      
+      if (result.toString().contains('"textLength":0') || 
+          result.toString().contains('error')) {
+        setState(() {
+          _error = 'الصفحة فارغة أو لم يتم تحميلها بشكل صحيح';
+        });
+      }
+    } catch (e) {
+      print('[WebView] Content verification failed: $e');
+    }
+  }
+
+  String _getErrorMessage(WebResourceError error) {
+    switch (error.errorCode) {
+      case -2:
+        return 'خطأ في الشبكة: تحقق من اتصال الإنترنت';
+      case -6:
+        return 'رفض الاتصال: الخادم غير متاح';
+      case -8:
+        return 'انتهت مهلة الاتصال';
+      case -10:
+        return 'عنوان URL غير صالح';
+      case -11:
+        return 'نوع الملف غير مدعوم';
+      default:
+        return 'خطأ ${error.errorCode}: ${error.description}';
     }
   }
 
