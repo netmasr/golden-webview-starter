@@ -181,27 +181,23 @@ class _WebViewScreenState extends State<WebViewScreen> {
     // Android-specific controller setup
     if (_controller.platform is AndroidWebViewController) {
       final AndroidWebViewController aCtrl = _controller.platform as AndroidWebViewController;
-      AndroidWebViewController.enableDebugging(true);
-      try { 
+      try {
+        // Enable debugging - this is the only method that's widely supported
+        AndroidWebViewController.enableDebugging(true);
+        
+        // Set media playback policy - this is supported in most versions
         aCtrl.setMediaPlaybackRequiresUserGesture(false);
-        // Enable DOM storage and database
-        aCtrl.enableDomStorage(true);
-        aCtrl.enableWebViewDebugging(true);
-        // Set cache mode to load from cache when possible
-        aCtrl.setAllowFileAccess(true);
-        aCtrl.setAllowContentAccess(true);
-        print('[WebView] Android-specific settings applied');
-        // Force enable JavaScript and DOM storage
-        print('[WebView] Configured Android WebView settings');
+        
+        print('[WebView] Android-specific settings applied successfully');
+        
+        // Note: DOM storage, file access methods removed due to version compatibility
+        // These features are enabled by default in newer WebView versions
+        
       } catch (e) {
-        print('[WebView] Android config error: $e');
+        print('[WebView] Android config error (non-critical): \$e');
+        // Continue anyway as these are optional enhancements
       }
     }
-    // Note: Most Android WebView configuration methods are not available in this version
-    // The following methods have been removed due to compatibility issues:
-    // setDomStorageEnabled, setDatabaseEnabled, setAllowFileAccess, 
-    // setAllowUniversalAccessFromFileURLs, setSafeBrowsingEnabled,
-    // setJavaScriptCanOpenWindowsAutomatically, setCacheMode, setGeolocationEnabled
     // Splash timer
     _splashDelaySeconds = int.tryParse(_splashDelay) ?? 0;
     _showSplash = _splashDelaySeconds > 0;
