@@ -1,85 +1,28 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
-import 'dart:io';
-import 'dart:convert';
 
-// Config from --dart-define with safe defaults
-const String _appName = String.fromEnvironment('GWA_APP_NAME', defaultValue: 'netmasr');
-const String _themeColorHex = String.fromEnvironment('GWA_THEME_COLOR', defaultValue: '#2196f3');
-const String _orientation = String.fromEnvironment('GWA_PLATFORM_ORIENTATION', defaultValue: 'system');
-const String _envSiteUrl = String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://example.com/');
-const String _userAgent = String.fromEnvironment('GWA_USER_AGENT', defaultValue: '');
-const String _defaultMobileUA = 'Mozilla/5.0 (Linux; Android 15; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
-const String _defaultDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-// Splash
-const String _splashMode = String.fromEnvironment('GWA_SPLASH_BG_MODE', defaultValue: 'color');
-const String _splashBgColorHex = String.fromEnvironment('GWA_SPLASH_BG_COLOR', defaultValue: '');
-const String _splashTagline = String.fromEnvironment('GWA_SPLASH_TAGLINE', defaultValue: '');
-const String _splashTextTheme = String.fromEnvironment('GWA_SPLASH_TEXT_THEME', defaultValue: 'light');
-const String _splashDelay = String.fromEnvironment('GWA_SPLASH_DELAY', defaultValue: '3');
-const String _splashDisplayLogo = String.fromEnvironment('GWA_SPLASH_DISPLAY_LOGO', defaultValue: '0');
-const String _splashBgImageUrl = String.fromEnvironment('GWA_SPLASH_BACKGROUND_IMAGE_URL', defaultValue: '');
-const String _splashLogoImageUrl = String.fromEnvironment('GWA_SPLASH_LOGO_IMAGE_URL', defaultValue: '');
-// Navigation
-const String _navType = String.fromEnvironment('GWA_NAV_TYPE', defaultValue: 'classic');
-const String _navItemsB64 = String.fromEnvironment('GWA_NAV_ITEMS_B64', defaultValue: '');
-
-Color _parseHexColor(String hex) {
-  var h = hex.replaceAll('#', '').toUpperCase();
-  if (h.length == 6) h = 'FF' + h; // add alpha if missing
-  return Color(int.parse(h, radix: 16));
+void main() {
+  runApp(const WebViewApp());
 }
 
-String _normalizedSiteUrl(String u) {
-  var s = u.trim();
-  if (s.isEmpty) return 'https://example.com/';
-  if (!(s.startsWith('http://') || s.startsWith('https://'))) {
-    s = 'https://' + s;
-  }
-  return s;
-}
-
-Future<void> _applyOrientation() async {
-  switch (_orientation) {
-    case 'portrait':
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-      break;
-    case 'landscape':
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      break;
-    default:
-      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-  }
-}
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await _applyOrientation();
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class WebViewApp extends StatelessWidget {
+  const WebViewApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final seed = _parseHexColor(_themeColorHex);
     return MaterialApp(
-      title: _appName,
+      title: '${GWA_APP_NAME}',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        useMaterial3: true,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const WebViewScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -93,131 +36,222 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _controller;
-  String? _error;
-  bool _loading = true;
-  int _splashDelaySeconds = 0;
-  bool _showSplash = false;
-  bool _showDebugInfo = false;
-  String _currentUrl = '';
-  List<_NavItem> _navItems = <_NavItem>[];
-  int _currentIndex = 0;
-  bool _didRetry = false;
-  bool _uaDesktopFallbackApplied = false;
+  
+  // App configuration from environment variables
+  final String _appName = const String.fromEnvironment('GWA_APP_NAME', defaultValue: 'WebView App');
+  final String _siteUrl = const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://example.com');
+  final String _userAgent = const String.fromEnvironment('GWA_USER_AGENT', defaultValue: '');
+  final String _themeColorHex = const String.fromEnvironment('GWA_THEME_COLOR', defaultValue: '#2196F3');
+  final String _splashBgColor = const String.fromEnvironment('GWA_SPLASH_BG_COLOR', defaultValue: '#2196F3');
+  final String _splashTagline = const String.fromEnvironment('GWA_SPLASH_TAGLINE', defaultValue: 'Loading...');
+  final String _splashTextTheme = const String.fromEnvironment('GWA_SPLASH_TEXT_THEME', defaultValue: 'light');
+  final bool _splashDisplayLogo = const String.fromEnvironment('GWA_SPLASH_DISPLAY_LOGO', defaultValue: '0') == '1';
+  final String _splashLogoUrl = const String.fromEnvironment('GWA_SPLASH_LOGO_IMAGE_URL', defaultValue: '');
+  final int _splashDelay = int.tryParse(const String.fromEnvironment('GWA_SPLASH_DELAY', defaultValue: '30')) ?? 30;
+  final String _navItemsB64 = const String.fromEnvironment('GWA_NAV_ITEMS_B64', defaultValue: '');
 
-  final String _siteUrl = _normalizedSiteUrl(_envSiteUrl);
+  // State variables
+  bool _loading = true;
+  String? _error;
+  bool _showSplash = true;
+  String _currentUrl = '';
+  int _currentIndex = 0;
+  List<_NavItem> _navItems = [];
+
+  // Default mobile user agent
+  final String _defaultMobileUA = 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36';
 
   @override
   void initState() {
     super.initState();
-    final PlatformWebViewControllerCreationParams params = Platform.isAndroid
-        ? AndroidWebViewControllerCreationParams()
-        : PlatformWebViewControllerCreationParams();
-    _controller = WebViewController.fromPlatformCreationParams(params);
+    _initializeNavItems();
+    _initializeWebView();
+    _startSplashTimer();
+  }
+
+  void _initializeNavItems() {
+    if (_navItemsB64.isNotEmpty) {
+      try {
+        final decoded = utf8.decode(base64.decode(_navItemsB64));
+        final List<dynamic> items = json.decode(decoded);
+        _navItems = items.map((item) => _NavItem(
+          title: item['title'] ?? 'Tab',
+          url: item['url'] ?? _siteUrl,
+          icon: _getIconFromString(item['icon']),
+        )).toList();
+      } catch (e) {
+        print('[Nav] Failed to decode nav items: $e');
+      }
+    }
+  }
+
+  IconData _getIconFromString(String? iconName) {
+    switch (iconName?.toLowerCase()) {
+      case 'home': return Icons.home;
+      case 'search': return Icons.search;
+      case 'favorite': return Icons.favorite;
+      case 'settings': return Icons.settings;
+      case 'person': return Icons.person;
+      case 'info': return Icons.info;
+      case 'help': return Icons.help;
+      case 'contact': return Icons.contact_page;
+      default: return Icons.web;
+    }
+  }
+
+  void _startSplashTimer() {
+    Future.delayed(Duration(milliseconds: _splashDelay * 100), () {
+      if (mounted) {
+        setState(() {
+          _showSplash = false;
+        });
+      }
+    });
+  }
+
+  void _initializeWebView() async {
+    print('[WebView] Initializing...');
+    
+    // Platform-specific parameters
+    late final PlatformWebViewControllerCreationParams params;
+    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+      params = WebKitWebViewControllerCreationParams(
+        allowsInlineMediaPlayback: true,
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
+    } else {
+      params = const PlatformWebViewControllerCreationParams();
+    }
+
+    final WebViewController controller = WebViewController.fromPlatformCreationParams(params);
     
     // Configure WebView with enhanced settings
-    _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-    _controller.setBackgroundColor(Colors.white);
+    _controller = controller;
+    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await _controller.setBackgroundColor(Colors.white);
     
     // Set user agent
     try {
       final uaToUse = _userAgent.isNotEmpty ? _userAgent : _defaultMobileUA;
-            });
-          },
-          onPageFinished: (String url) {
-            print('[WebView] Page finished loading: $url');
-            setState(() {
-              _loading = false;
-            });
-          },
-          onWebResourceError: (WebResourceError error) {
-            print('[WebView] Resource error: ${error.description}');
-            setState(() {
-              _loading = false;
-              _error = 'خطأ في تحميل الموقع: ${error.description}';
-            });
-          },
-        ),
-      );
+      await _controller.setUserAgent(uaToUse);
+      print('[WebView] User agent set: $uaToUse');
+    } catch (e) {
+      print('[WebView] Failed to set user agent: $e');
+    }
+
+    // Set navigation delegate
+    await _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onProgress: (int progress) {
+          print('[WebView] Loading progress: $progress%');
+        },
+        onPageStarted: (String url) {
+          print('[WebView] Page started loading: $url');
+          setState(() {
+            _currentUrl = url;
+            _loading = true;
+            _error = null;
+          });
+        },
+        onPageFinished: (String url) {
+          print('[WebView] Page finished loading: $url');
+          setState(() {
+            _loading = false;
+          });
+        },
+        onWebResourceError: (WebResourceError error) {
+          print('[WebView] Resource error: ${error.description}');
+          setState(() {
+            _loading = false;
+            _error = 'خطأ في تحميل الموقع: ${error.description}';
+          });
+        },
+      ),
+    );
 
     // Simple Android-specific configuration - only use well-supported methods
     if (controller.platform is AndroidWebViewController) {
       try {
         AndroidWebViewController.enableDebugging(true);
         final androidController = controller.platform as AndroidWebViewController;
-        androidController.setMediaPlaybackRequiresUserGesture(false);
+        await androidController.setMediaPlaybackRequiresUserGesture(false);
         print('[WebView] Android WebView configured');
       } catch (e) {
         print('[WebView] Android configuration warning: $e');
       }
     }
 
-    _controller = controller;
-    _loadWebsite();
+    _loadInitial();
   }
 
-  void _loadWebsite() {
+  Future<void> _loadInitial() async {
+    print('[WebView] Starting simplified load process');
     setState(() {
       _loading = true;
       _error = null;
     });
-
-    print('[WebView] Loading website: $_siteUrl');
     
     try {
-      _controller.loadRequest(Uri.parse(_siteUrl));
-      print('[WebView] Load request sent');
+      final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
+      print('[WebView] Target URL: $initialUrl');
+      
+      // Wait for WebView to be ready
+      await Future.delayed(const Duration(milliseconds: 800));
+      
+      // Direct URL loading approach - much simpler and more reliable
+      final uri = Uri.parse(initialUrl);
+      print('[WebView] Loading URL directly: $initialUrl');
+      await _controller.loadRequest(uri);
+      print('[WebView] URL load request sent');
+      
     } catch (e) {
       print('[WebView] Load failed: $e');
       setState(() {
         _loading = false;
-        _error = 'خطأ في تحميل الموقع: $e';
+        _error = 'خطأ في تحميل الموقع: $e\n\nURL: $_siteUrl';
       });
     }
   }
 
   void _retryLoad() {
     print('[WebView] Retrying load...');
-    _loadWebsite();
+    _loadInitial();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF2196F3),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Main WebView
-            if (!_showSplash)
-              WebViewWidget(controller: _controller),
-            
-            // Loading indicator
-            if (_loading && !_showSplash)
-              Container(
-                color: Colors.white,
+      body: Stack(
+        children: [
+          // Main WebView content
+          if (!_showSplash)
+            WebViewWidget(controller: _controller),
+          
+          // Loading overlay (shows during page load)
+          if (_loading && !_showSplash)
+            Positioned.fill(
+              child: Container(
+                color: Colors.white.withOpacity(0.8),
                 child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2196F3)),
-                      ),
+                      CircularProgressIndicator(),
                       SizedBox(height: 16),
                       Text(
                         'جاري التحميل...',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black54,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.black54),
                       ),
                     ],
                   ),
                 ),
               ),
-            
-            // Error screen
-            if (_error != null && !_showSplash)
-              Container(
+            ),
+          
+          // Error overlay (only shows when there's an error)
+          if (_error != null && !_showSplash)
+            Positioned.fill(
+              child: Container(
                 color: Colors.white,
                 child: Center(
                   child: Padding(
@@ -225,37 +259,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 64,
-                          color: Colors.red,
-                        ),
+                        const Icon(Icons.error_outline, size: 64, color: Colors.red),
                         const SizedBox(height: 16),
-                        const Text(
-                          'خطأ في تحميل الموقع',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
                         Text(
                           _error!,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
+                          style: const TextStyle(fontSize: 16, color: Colors.black87),
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: _retryLoad,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2196F3),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                          ),
                           child: const Text('إعادة المحاولة'),
                         ),
                       ],
@@ -263,58 +276,72 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   ),
                 ),
               ),
-            
-            // Splash screen
-            if (_showSplash)
-              Container(
-                width: double.infinity,
-                height: double.infinity,
-                decoration: const BoxDecoration(
+            ),
+          
+          // Splash screen overlay
+          if (_showSplash)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                    colors: [
+                      _parseHexColor(_splashBgColor),
+                      _parseHexColor(_splashBgColor).withOpacity(0.8),
+                    ],
                   ),
                 ),
-                child: const Center(
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.language,
-                        size: 80,
-                        color: Colors.white,
-                      ),
-                      SizedBox(height: 24),
+                      if (_splashDisplayLogo && _splashLogoUrl.isNotEmpty) ...[
+                        Image.network(
+                          _splashLogoUrl,
+                          width: 120,
+                          height: 120,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(Icons.image, size: 120, color: Colors.white70);
+                          },
+                        ),
+                        const SizedBox(height: 32),
+                      ],
                       Text(
-                        'netmasr',
+                        _appName,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 32,
+                          color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
+                          fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
                         ),
                       ),
-                      SizedBox(height: 24),
-                      CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        strokeWidth: 3,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'جاري التحميل...',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
+                      const SizedBox(height: 16),
+                      if (_splashTagline.isNotEmpty)
+                        Text(
+                          _splashTagline,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _splashTextTheme == 'dark' ? Colors.black : Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
+  }
+
+  Color _parseHexColor(String hex) {
+    if (hex.isEmpty) return const Color(0xFF2196F3);
+    hex = hex.replaceAll('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    return Color(int.parse(hex, radix: 16));
   }
 }
 
