@@ -42,47 +42,39 @@ workflows:
           echo "[Env] SPLASH_DISPLAY_LOGO=$SPLASH_DISPLAY_LOGO"
           # Write strings.xml deterministically
           mkdir -p android/app/src/main/res/values
-          printf "%s\n" \
-            "<resources>" \
-            "  <string name=\"app_name\">$APP_NAME</string>" \
-            "</resources>" \
-            > android/app/src/main/res/values/strings.xml
-          # Also update any locale-specific strings.xml to ensure launcher shows the correct name
-          if command -v find >/dev/null 2>&1; then
-            find android/app/src/main/res -type f -path '*/values*/strings.xml' | while read -r F; do
-              if grep -q '<string name="app_name">' "$F"; then
-                sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"'"$APP_NAME"'"'</string>|' "$F" || true
-              else
-                # Insert app_name before closing resources
-                sed -i 's|</resources>|  <string name=\"app_name\">'"'"$APP_NAME"'"'</string>\n</resources>|' "$F" || true
-              fi
-            done
-          fi
-          echo "[Check] strings.xml entries for app_name:" || true
-          grep -R "<string name=\"app_name\"" -n android/app/src/main/res/values* || true
-          # Update applicationId if provided
-          if [ -n "$GWA_APP_ID" ]; then
-            sed -i 's/applicationId \".*\"/applicationId \"'"$GWA_APP_ID"'\"/' android/app/build.gradle || true
+          echo "<resources>" > android/app/src/main/res/values/strings.xml
+          echo "  <string name=\"app_name\">$APP_NAME</string>" >> android/app/src/main/res/values/strings.xml
+          echo "</resources>" >> android/app/src/main/res/values/strings.xml
+          # Force update ALL strings.xml files including generated ones
+          find android/app/src/main/res -name 'strings.xml' -type f | while read -r F; do
+            echo "[Fix] Updating strings.xml: $F"
+            if grep -q '<string name="app_name">' "$F"; then
+              sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"'"$APP_NAME"'"'</string>|' "$F" || true
+            else
+              sed -i 's|</resources>|  <string name=\"app_name\">'"'"$APP_NAME"'"'</string>\n</resources>|' "$F" || true
             echo "[Check] applicationId set to $GWA_APP_ID"
           fi
-          # Normalize application label to use @string/app_name
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
-              sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' android/app/src/main/AndroidManifest.xml || true
-            else
-              sed -i 's|<application |<application android:label=\"@string/app_name\" |' android/app/src/main/AndroidManifest.xml || true
-            fi
-          fi
-          # Do the same for debug/profile manifests if present
-          for MF in android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml; do
+          # Force update AndroidManifest.xml files with app name
+          for MF in android/app/src/main/AndroidManifest.xml android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml; do
             if [ -f "$MF" ]; then
-              if grep -q 'android:label=' "$MF"; then
-                sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' "$MF" || true
-              else
-                sed -i 's|<application |<application android:label=\"@string/app_name\" |' "$MF" || true
-              fi
+              echo "[Fix] Updating manifest: $MF"
+              # First, completely remove any existing android:label attributes
+              sed -i 's/android:label="[^"]*"//g' "$MF" || true
+              # Then add the correct label with direct app name (not string reference)
+              sed -i 's|<application|<application android:label="'"$APP_NAME"'"|' "$MF" || true
+              echo "[Check] Updated manifest label in $MF:"
+              grep -n "android:label" "$MF" || true
             fi
           done
+          
+          # Update app name in build.gradle as well
+          if [ -f android/app/build.gradle ]; then
+            echo "[Fix] Updating build.gradle with app name"
+            # Add resValue for app_name
+            if ! grep -q "resValue.*app_name" android/app/build.gradle; then
+              sed -i '/defaultConfig {/a\        resValue "string", "app_name", "'"$APP_NAME"'"' android/app/build.gradle || true
+            fi
+          fi
           # Ensure INTERNET permission exists for release builds
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then

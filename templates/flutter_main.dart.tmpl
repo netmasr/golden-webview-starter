@@ -123,11 +123,34 @@ class _WebViewScreenState extends State<WebViewScreen> {
           return NavigationDecision.navigate;
         },
         onWebResourceError: (err) {
+          print('[WebView] Resource error: ${err.errorCode} - ${err.description}');
+          print('[WebView] Failed URL: ${err.url}');
+          
+          // Handle specific error codes
+          String errorMsg = 'Connection error';
+          if (err.errorCode == -2) {
+            errorMsg = 'Network error: Please check your internet connection';
+          } else if (err.errorCode == -6) {
+            errorMsg = 'Connection refused: Server may be down';
+          } else if (err.errorCode == -8) {
+            errorMsg = 'Timeout: Server is taking too long to respond';
+          } else {
+            errorMsg = 'Error ${err.errorCode}: ${err.description ?? "Unknown error"}';
+          }
+          
           setState(() {
             _loading = false;
-            _error = 'Error ${err.errorCode}: ' + (err.description ?? 'Unknown error');
+            _error = errorMsg;
           });
-          _retryLoad();
+          
+          // Only retry for network-related errors, not for all errors
+          if (err.errorCode == -2 || err.errorCode == -6 || err.errorCode == -8) {
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted && _error != null) {
+                _retryLoad();
+              }
+            });
+          }
         },
       ));
     try {
@@ -140,6 +163,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // Enable debugging and allow mixed content to avoid blocked HTTP subresources
       AndroidWebViewController.enableDebugging(true);
       try { aCtrl.setMediaPlaybackRequiresUserGesture(false); } catch (_) {}
+      // Enable DOM storage and database
+      try { aCtrl.setDomStorageEnabled(true); } catch (_) {}
+      try { aCtrl.setDatabaseEnabled(true); } catch (_) {}
+      // Allow file access and universal access
+      try { aCtrl.setAllowFileAccess(true); } catch (_) {}
+      try { aCtrl.setAllowUniversalAccessFromFileURLs(true); } catch (_) {}
+      // Disable safe browsing that might block sites
+      try { aCtrl.setSafeBrowsingEnabled(false); } catch (_) {}
+      // Enable JavaScript popup windows
+      try { aCtrl.setJavaScriptCanOpenWindowsAutomatically(true); } catch (_) {}
+      // Set cache mode to load from cache when offline, otherwise from network
+      try { aCtrl.setCacheMode(AndroidCacheMode.loadDefault); } catch (_) {}
+      // Enable geolocation
+      try { aCtrl.setGeolocationEnabled(true); } catch (_) {}
     }
     _controller = ctrl;
     // Splash timer
@@ -158,32 +195,60 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _loadInitial() async {
     try {
       final initialUrl = _navItems.isNotEmpty ? _navItems[_currentIndex].url : _siteUrl;
-      final base = Uri.parse(initialUrl);
-      final uri = base.replace(
-        queryParameters: {
-          ...base.queryParameters,
-          '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
-        },
-      );
-      // Clear cache and load with cache-busting timestamp param for broad compatibility
-      try { await _controller.clearCache(); } catch (_) {}
+      print('[WebView] Loading URL: $initialUrl');
+      
+      // Clear all caches before loading to avoid ERR_CACHE_MISS
+      try {
+        await _controller.clearCache();
+        await _controller.clearLocalStorage();
+        print('[WebView] Cache cleared successfully');
+      } catch (e) {
+        print('[WebView] Cache clear error: $e');
+      }
+      
+      // Add delay to ensure cache is cleared
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Load with fresh request
+      final uri = Uri.parse(initialUrl);
       await _controller.loadRequest(uri);
+      print('[WebView] Request sent to: $uri');
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      print('[WebView] Load error: $e');
+      setState(() { _error = 'Network error: Please check your internet connection'; _loading = false; });
+      // Auto retry after 3 seconds
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted && _error != null) {
+          _retryLoad();
+        }
+      });
     }
   }
 
   Future<void> _retryLoad() async {
-    if (_didRetry) return;
-    _didRetry = true;
+    print('[WebView] Retry attempt started');
     setState(() { _loading = true; _error = null; });
-    try { 
-      await _controller.clearCache(); 
+    
+    try {
+      // Force clear all WebView data
+      await _controller.clearCache();
       await _controller.clearLocalStorage();
-    } catch (_) {}
-    // Wait a moment before retrying
-    await Future.delayed(const Duration(seconds: 1));
-    await _loadInitial();
+      
+      // Reset retry flag for this attempt
+      _didRetry = false;
+      
+      // Wait longer before retry to ensure network stability
+      await Future.delayed(const Duration(seconds: 2));
+      
+      // Try loading again
+      await _loadInitial();
+    } catch (e) {
+      print('[WebView] Retry failed: $e');
+      setState(() {
+        _loading = false;
+        _error = 'Connection failed. Please check your internet and try again.';
+      });
+    }
   }
 
   Future<void> _postLoadChecks() async {
