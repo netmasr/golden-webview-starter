@@ -163,15 +163,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // Enable debugging and allow mixed content to avoid blocked HTTP subresources
       AndroidWebViewController.enableDebugging(true);
       try { aCtrl.setMediaPlaybackRequiresUserGesture(false); } catch (_) {}
-      // Enable DOM storage and database
-      try { aCtrl.setDomStorageEnabled(true); } catch (_) {}
-      try { aCtrl.setDatabaseEnabled(true); } catch (_) {}
-      // Allow file access and universal access
-      try { aCtrl.setAllowFileAccess(true); } catch (_) {}
-      try { aCtrl.setAllowUniversalAccessFromFileURLs(true); } catch (_) {}
-      // Note: Some methods removed due to version compatibility issues
-      // setSafeBrowsingEnabled, setJavaScriptCanOpenWindowsAutomatically, 
-      // setCacheMode, setGeolocationEnabled are not available in this version
+      // Note: Most Android WebView configuration methods are not available in this version
+      // The following methods have been removed due to compatibility issues:
+      // setDomStorageEnabled, setDatabaseEnabled, setAllowFileAccess, 
+      // setAllowUniversalAccessFromFileURLs, setSafeBrowsingEnabled,
+      // setJavaScriptCanOpenWindowsAutomatically, setCacheMode, setGeolocationEnabled
     }
     _controller = ctrl;
     // Splash timer
