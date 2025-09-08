@@ -12,8 +12,8 @@ const String _themeColorHex = String.fromEnvironment('GWA_THEME_COLOR', defaultV
 const String _orientation = String.fromEnvironment('GWA_PLATFORM_ORIENTATION', defaultValue: 'system');
 const String _envSiteUrl = String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://example.com/');
 const String _userAgent = String.fromEnvironment('GWA_USER_AGENT', defaultValue: '');
-const String _defaultMobileUA = 'Mozilla/5.0 (Linux; Android 15; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
-const String _defaultDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const String _defaultMobileUA = 'Mozilla/5.0 (Linux; Android 15; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+const String _defaultDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 // Splash
 const String _splashMode = String.fromEnvironment('GWA_SPLASH_BG_MODE', defaultValue: 'color');
 const String _splashBgColorHex = String.fromEnvironment('GWA_SPLASH_BG_COLOR', defaultValue: '');
@@ -140,6 +140,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // Enable debugging and allow mixed content to avoid blocked HTTP subresources
       AndroidWebViewController.enableDebugging(true);
       try { aCtrl.setMediaPlaybackRequiresUserGesture(false); } catch (_) {}
+      try { aCtrl.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}
+      // Enable third-party cookies for better site compatibility
+      try { aCtrl.setWebViewClient(AndroidWebViewClient()); } catch (_) {}
     }
     _controller = ctrl;
     // Splash timer
@@ -176,7 +179,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
   Future<void> _retryLoad() async {
     if (_didRetry) return;
     _didRetry = true;
-    try { await _controller.clearCache(); } catch (_) {}
+    setState(() { _loading = true; _error = null; });
+    try { 
+      await _controller.clearCache(); 
+      await _controller.clearLocalStorage();
+    } catch (_) {}
+    // Wait a moment before retrying
+    await Future.delayed(const Duration(seconds: 1));
     await _loadInitial();
   }
 

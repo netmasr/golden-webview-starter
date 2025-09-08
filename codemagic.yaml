@@ -9,9 +9,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter
-          flutter pub add webview_flutter_android
-          flutter pub add webview_flutter_wkwebview
+          flutter pub add webview_flutter:^4.4.4
+          flutter pub add webview_flutter_android:^3.12.1
+          flutter pub add webview_flutter_wkwebview:^3.9.4
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -49,14 +49,14 @@ workflows:
             > android/app/src/main/res/values/strings.xml
           # Also update any locale-specific strings.xml to ensure launcher shows the correct name
           if command -v find >/dev/null 2>&1; then
-            while IFS= read -r -d '' F; do
+            find android/app/src/main/res -type f -path '*/values*/strings.xml' | while read -r F; do
               if grep -q '<string name="app_name">' "$F"; then
-                sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"$APP_NAME"'</string>|' "$F" || true
+                sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"'"$APP_NAME"'"'</string>|' "$F" || true
               else
                 # Insert app_name before closing resources
-                sed -i 's|</resources>|  <string name=\"app_name\">'"$APP_NAME"'</string>\n</resources>|' "$F" || true
+                sed -i 's|</resources>|  <string name=\"app_name\">'"'"$APP_NAME"'"'</string>\n</resources>|' "$F" || true
               fi
-            done < <(find android/app/src/main/res -type f -path '*/values*/strings.xml' -print0)
+            done
           fi
           echo "[Check] strings.xml entries for app_name:" || true
           grep -R "<string name=\"app_name\"" -n android/app/src/main/res/values* || true
@@ -211,9 +211,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter
-          flutter pub add webview_flutter_android
-          flutter pub add webview_flutter_wkwebview
+          flutter pub add webview_flutter:^4.4.4
+          flutter pub add webview_flutter_android:^3.12.1
+          flutter pub add webview_flutter_wkwebview:^3.9.4
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
@@ -378,9 +378,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter
-          flutter pub add webview_flutter_android
-          flutter pub add webview_flutter_wkwebview
+          flutter pub add webview_flutter:^4.4.4
+          flutter pub add webview_flutter_android:^3.12.1
+          flutter pub add webview_flutter_wkwebview:^3.9.4
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
