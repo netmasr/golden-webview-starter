@@ -10,52 +10,12 @@ workflows:
           flutter create app
           cd app
           flutter pub add url_launcher:^6.3.0
-          # Add Android permissions for url_launcher
+          # Add Android permissions for url_launcher safely
           echo "[DEBUG] Adding Android permissions for url_launcher..."
-          mkdir -p android/app/src/main
-          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.app">
-    
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    
-    <application
-        android:label="app"
-        android:name="\${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-            </intent-filter>
-        </activity>
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-    </application>
-</manifest>
-EOF
+          # Update AndroidManifest.xml to add required permissions
+          sed -i 's/<manifest/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" \/>\n    <manifest/' android/app/src/main/AndroidManifest.xml
+          # Enable cleartext traffic
+          sed -i 's/android:name="\${applicationName}"/android:name="\${applicationName}"\n        android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
@@ -357,52 +317,12 @@ EOF
           flutter create app
           cd app
           flutter pub add url_launcher:^6.3.0
-          # Add Android permissions for url_launcher
+          # Add Android permissions for url_launcher safely
           echo "[DEBUG] Adding Android permissions for url_launcher..."
-          mkdir -p android/app/src/main
-          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.app">
-    
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    
-    <application
-        android:label="app"
-        android:name="\${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-            </intent-filter>
-        </activity>
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-    </application>
-</manifest>
-EOF
+          # Update AndroidManifest.xml to add required permissions
+          sed -i 's/<manifest/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" \/>\n    <manifest/' android/app/src/main/AndroidManifest.xml
+          # Enable cleartext traffic
+          sed -i 's/android:name="\${applicationName}"/android:name="\${applicationName}"\n        android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
