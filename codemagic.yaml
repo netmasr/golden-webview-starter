@@ -271,6 +271,7 @@ workflows:
           echo "[BUILD] GWA_APP_NAME: ${GWA_APP_NAME:-Golden App}"
           flutter build apk --release \
             --dart-define=SITE_URL="$SITE_URL" \
+            --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_APP_NAME="${GWA_APP_NAME:-Golden App}" \
             --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR:-#2196F3}" \
             --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE:-Loading...}" \
@@ -284,6 +285,7 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -302,6 +304,7 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -463,6 +466,7 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -481,6 +485,7 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -707,6 +712,7 @@ workflows:
           echo "[BUILD] GWA_SITE_URL: ${GWA_SITE_URL}"
           flutter build ipa --release \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
+            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
