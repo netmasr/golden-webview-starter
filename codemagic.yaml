@@ -15,9 +15,12 @@ workflows:
           # Add Android permissions for WebView
           echo "[DEBUG] Adding Android permissions for WebView..."
           # Update AndroidManifest.xml to add required permissions
-          sed -i 's/<manifest/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <manifest/' android/app/src/main/AndroidManifest.xml
+          sed -i '1i\\<uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+          sed -i '2i\\<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' android/app/src/main/AndroidManifest.xml
+          sed -i '3i\\<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
           # Enable cleartext traffic and hardware acceleration
-          sed -i 's/android:name="\${applicationName}"/android:name="\${applicationName}"\n        android:usesCleartextTraffic="true"\n        android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
+          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml || true
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
@@ -324,9 +327,12 @@ workflows:
           # Add Android permissions for WebView
           echo "[DEBUG] Adding Android permissions for WebView..."
           # Update AndroidManifest.xml to add required permissions
-          sed -i 's/<manifest/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <manifest/' android/app/src/main/AndroidManifest.xml
+          sed -i '1i\\<uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+          sed -i '2i\\<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' android/app/src/main/AndroidManifest.xml
+          sed -i '3i\\<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
           # Enable cleartext traffic and hardware acceleration
-          sed -i 's/android:name="\${applicationName}"/android:name="\${applicationName}"\n        android:usesCleartextTraffic="true"\n        android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
+          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml || true
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
