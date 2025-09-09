@@ -9,7 +9,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add url_launcher:^6.3.0
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           # Add Android permissions for url_launcher safely
           echo "[DEBUG] Adding Android permissions for url_launcher..."
           # Update AndroidManifest.xml to add required permissions
@@ -316,7 +318,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add url_launcher:^6.3.0
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           # Add Android permissions for url_launcher safely
           echo "[DEBUG] Adding Android permissions for url_launcher..."
           # Update AndroidManifest.xml to add required permissions
@@ -488,7 +492,9 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add url_launcher:^6.3.0
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           mkdir -p lib
           cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
