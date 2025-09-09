@@ -187,8 +187,6 @@ workflows:
               "  android_gravity: center" \
               "  ios_content_mode: center" \
               "  android_12:" \
-              "    image: splash.png" \
-              "    color: \"$THEME_COLOR\"" \
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
@@ -258,6 +256,26 @@ workflows:
           grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || true
           echo "[Check] strings.xml app_name"
           cat android/app/src/main/res/values/strings.xml || true
+      - name: Build Android APK (Build Only)
+        script: |
+          cd app
+          # Use the same SITE_URL from prepare step
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[BUILD] Building APK with dart-defines:"
+          echo "[BUILD] SITE_URL: $SITE_URL"
+          echo "[BUILD] GWA_APP_NAME: ${GWA_APP_NAME:-Golden App}"
+          flutter build apk --release \
+            --dart-define=SITE_URL="$SITE_URL" \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME:-Golden App}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR:-#2196F3}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE:-Loading...}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME:-light}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO:-true}"
       - name: Build Android AAB & APK
         script: |
           cd app
@@ -676,7 +694,17 @@ workflows:
           fi
       - name: Build iOS IPA (signed)
         script: |
-          cd app
+          # Use the same SITE_URL from prepare step
+          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
+          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
+            SITE_URL="https://$RAW_SITE_URL"
+          else
+            SITE_URL="$RAW_SITE_URL"
+          fi
+          echo "[BUILD] Building APK with all dart-defines..."
+          echo "[BUILD] SITE_URL: $SITE_URL"
+          echo "[BUILD] GWA_APP_NAME: ${GWA_APP_NAME:-Golden App}"
+          echo "[BUILD] GWA_SITE_URL: ${GWA_SITE_URL}"
           flutter build ipa --release \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
