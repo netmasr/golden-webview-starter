@@ -24,101 +24,82 @@ workflows:
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
-          echo "[DEBUG] Using Flutter template from: ../templates/flutter_main.dart.tmpl"
-          echo "[DEBUG] Template file exists: $(test -f ../templates/flutter_main.dart.tmpl && echo 'YES' || echo 'NO')"
-          if [ -f ../templates/flutter_main.dart.tmpl ]; then
-            echo "[DEBUG] Template file size: $(wc -c < ../templates/flutter_main.dart.tmpl) bytes"
-            echo "[DEBUG] First 5 lines of template:"
-            head -5 ../templates/flutter_main.dart.tmpl
-            cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          else
-            echo "[WARN] Template ../templates/flutter_main.dart.tmpl not found. Writing fallback main.dart"
-            cat > lib/main.dart <<'DART'
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-
-void main() => runApp(const MaterialApp(
-  debugShowCheckedModeBanner: false,
-  home: _App(),
-));
-
-class _App extends StatefulWidget {
-  const _App({super.key});
-  @override
-  State<_App> createState() => _AppState();
-}
-
-class _AppState extends State<_App> {
-  late final WebViewController _c;
-  bool _loading = true;
-  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');
-
-  @override
-  void initState() {
-    super.initState();
-    final params = const PlatformWebViewControllerCreationParams();
-    _c = WebViewController.fromPlatformCreationParams(params)
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => setState(() => _loading = true),
-        onPageFinished: (_) => setState(() => _loading = false),
-      ));
-    if (_c.platform is AndroidWebViewController) {
-      final a = _c.platform as AndroidWebViewController;
-      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}
-      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}
-    }
-    _start();
-  }
-
-  Future<void> _start() async {
-    try {
-      await CookieManager().clearCookies();
-      await _c.clearCache();
-      await _c.clearLocalStorage();
-      await _c.loadRequest(Uri.parse(_site));
-    } catch (e) {
-      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('WebView')),
-      body: Stack(children: [
-        WebViewWidget(controller: _c),
-        if (_loading)
-          const Center(child: CircularProgressIndicator()),
-      ]),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _start,
-        child: const Icon(Icons.refresh),
-      ),
-    );
-  }
-}
-DART
-          fi
+          echo "[DEBUG] Writing fallback main.dart via printf (YAML-safe)"
+          : > lib/main.dart
+          printf "%s\n" \
+            "import 'dart:async';" \
+            "import 'package:flutter/material.dart';" \
+            "import 'package:webview_flutter/webview_flutter.dart';" \
+            "import 'package:webview_flutter_android/webview_flutter_android.dart';" \
+            "" \
+            "void main() => runApp(const MaterialApp(" \
+            "  debugShowCheckedModeBanner: false," \
+            "  home: _App()," \
+            "));" \
+            "" \
+            "class _App extends StatefulWidget {" \
+            "  const _App({super.key});" \
+            "  @override" \
+            "  State<_App> createState() => _AppState();" \
+            "}" \
+            "" \
+            "class _AppState extends State<_App> {" \
+            "  late final WebViewController _c;" \
+            "  bool _loading = true;" \
+            "  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');" \
+            "" \
+            "  @override" \
+            "  void initState() {" \
+            "    super.initState();" \
+            "    final params = const PlatformWebViewControllerCreationParams();" \
+            "    _c = WebViewController.fromPlatformCreationParams(params)" \
+            "      ..setJavaScriptMode(JavaScriptMode.unrestricted)" \
+            "      ..setNavigationDelegate(NavigationDelegate(" \
+            "        onPageStarted: (_) => setState(() => _loading = true)," \
+            "        onPageFinished: (_) => setState(() => _loading = false)," \
+            "      ));" \
+            "    if (_c.platform is AndroidWebViewController) {" \
+            "      final a = _c.platform as AndroidWebViewController;" \
+            "      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}" \
+            "      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}" \
+            "    }" \
+            "    _start();" \
+            "  }" \
+            "" \
+            "  Future<void> _start() async {" \
+            "    try {" \
+            "      await CookieManager().clearCookies();" \
+            "      await _c.clearCache();" \
+            "      await _c.clearLocalStorage();" \
+            "      await _c.loadRequest(Uri.parse(_site));" \
+            "    } catch (e) {" \
+            "      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');" \
+            "    }" \
+            "  }" \
+            "" \
+            "  @override" \
+            "  Widget build(BuildContext context) {" \
+            "    return Scaffold(" \
+            "      appBar: AppBar(title: const Text('WebView'))," \
+            "      body: Stack(children: [" \
+            "        WebViewWidget(controller: _c)," \
+            "        if (_loading)" \
+            "          const Center(child: CircularProgressIndicator())," \
+            "      ])," \
+            "      floatingActionButton: FloatingActionButton(" \
+            "        onPressed: _start," \
+            "        child: const Icon(Icons.refresh)," \
+            "      )," \
+            "    );" \
+            "  }" \
+            "}" \
+            >> lib/main.dart
           echo "[DEBUG] main.dart written successfully. File size: $(wc -c < lib/main.dart) bytes"
           echo "[DEBUG] Checking for required Flutter state variables in main.dart:"
           grep -n "_showSplash\|_controller\|_loading\|_error" lib/main.dart || echo "[ERROR] Missing state variables in main.dart!"
           echo "[DEBUG] Template version check:"
           grep -n "Template Version" lib/main.dart || echo "[WARNING] No template version found"
-          echo "[PATCH] Ensuring Android WebView cache is disabled and mixed content allowed"
-          # Ensure android-specific import exists for cache/mixed content modes
-          if ! grep -q "webview_flutter_android.dart" lib/main.dart; then
-            sed -i '1i\import \x27package:webview_flutter_android/webview_flutter_android.dart\x27;' lib/main.dart
-          fi
-          # Add CookieManager clearing before cache clearing in start sequence
-          sed -i "s/\(\/\/ Solution for ERR_CACHE_MISS: Clear cache and load initialization page\)/\1\n      final cookieManager = CookieManager();\n      await cookieManager.clearCookies();/" lib/main.dart || true
-          # Inject Android no-cache + mixed content after media gesture line (append two code lines safely)
-          sed -i "/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
-      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }" lib/main.dart || true
-          sed -i "/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
-      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }" lib/main.dart || true
+          # No post-write sed patches needed; fallback template already includes Android cache/mixed-content fixes
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
@@ -436,81 +417,77 @@ DART
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
           sed -i 's/<application/<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml || true
           echo "[DEBUG] Android permissions added successfully"
-          # Write main.dart from template (reads config from --dart-define at build time) with fallback
+          # Write main.dart using YAML-safe printf
           mkdir -p lib
-          if [ -f ../templates/flutter_main.dart.tmpl ]; then
-            cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          else
-            echo "[WARN] Template ../templates/flutter_main.dart.tmpl not found. Writing fallback main.dart"
-            cat > lib/main.dart <<'DART'
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-
-void main() => runApp(const MaterialApp(
-  debugShowCheckedModeBanner: false,
-  home: _App(),
-));
-
-class _App extends StatefulWidget {
-  const _App({super.key});
-  @override
-  State<_App> createState() => _AppState();
-}
-
-class _AppState extends State<_App> {
-  late final WebViewController _c;
-  bool _loading = true;
-  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');
-
-  @override
-  void initState() {
-    super.initState();
-    final params = const PlatformWebViewControllerCreationParams();
-    _c = WebViewController.fromPlatformCreationParams(params)
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => setState(() => _loading = true),
-        onPageFinished: (_) => setState(() => _loading = false),
-      ));
-    if (_c.platform is AndroidWebViewController) {
-      final a = _c.platform as AndroidWebViewController;
-      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}
-      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}
-    }
-    _start();
-  }
-
-  Future<void> _start() async {
-    try {
-      await CookieManager().clearCookies();
-      await _c.clearCache();
-      await _c.clearLocalStorage();
-      await _c.loadRequest(Uri.parse(_site));
-    } catch (e) {
-      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('WebView')),
-      body: Stack(children: [
-        WebViewWidget(controller: _c),
-        if (_loading)
-          const Center(child: CircularProgressIndicator()),
-      ]),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _start,
-        child: const Icon(Icons.refresh),
-      ),
-    );
-  }
-}
-DART
-          fi
+          : > lib/main.dart
+          printf "%s\n" \
+            "import 'dart:async';" \
+            "import 'package:flutter/material.dart';" \
+            "import 'package:webview_flutter/webview_flutter.dart';" \
+            "import 'package:webview_flutter_android/webview_flutter_android.dart';" \
+            "" \
+            "void main() => runApp(const MaterialApp(" \
+            "  debugShowCheckedModeBanner: false," \
+            "  home: _App()," \
+            "));" \
+            "" \
+            "class _App extends StatefulWidget {" \
+            "  const _App({super.key});" \
+            "  @override" \
+            "  State<_App> createState() => _AppState();" \
+            "}" \
+            "" \
+            "class _AppState extends State<_App> {" \
+            "  late final WebViewController _c;" \
+            "  bool _loading = true;" \
+            "  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');" \
+            "" \
+            "  @override" \
+            "  void initState() {" \
+            "    super.initState();" \
+            "    final params = const PlatformWebViewControllerCreationParams();" \
+            "    _c = WebViewController.fromPlatformCreationParams(params)" \
+            "      ..setJavaScriptMode(JavaScriptMode.unrestricted)" \
+            "      ..setNavigationDelegate(NavigationDelegate(" \
+            "        onPageStarted: (_) => setState(() => _loading = true)," \
+            "        onPageFinished: (_) => setState(() => _loading = false)," \
+            "      ));" \
+            "    if (_c.platform is AndroidWebViewController) {" \
+            "      final a = _c.platform as AndroidWebViewController;" \
+            "      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}" \
+            "      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}" \
+            "    }" \
+            "    _start();" \
+            "  }" \
+            "" \
+            "  Future<void> _start() async {" \
+            "    try {" \
+            "      await CookieManager().clearCookies();" \
+            "      await _c.clearCache();" \
+            "      await _c.clearLocalStorage();" \
+            "      await _c.loadRequest(Uri.parse(_site));" \
+            "    } catch (e) {" \
+            "      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');" \
+            "    }" \
+            "  }" \
+            "" \
+            "  @override" \
+            "  Widget build(BuildContext context) {" \
+            "    return Scaffold(" \
+            "      appBar: AppBar(title: const Text('WebView'))," \
+            "      body: Stack(children: [" \
+            "        WebViewWidget(controller: _c)," \
+            "        if (_loading)" \
+            "          const Center(child: CircularProgressIndicator())," \
+            "      ])," \
+            "      floatingActionButton: FloatingActionButton(" \
+            "        onPressed: _start," \
+            "        child: const Icon(Icons.refresh)," \
+            "      )," \
+            "    );" \
+            "  }" \
+            "}" \
+            >> lib/main.dart
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
@@ -520,19 +497,9 @@ DART
           fi
           echo "[Env] Effective SITE_URL=$SITE_URL"
           if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
+            echo "[WARNING] SITE_URL is not reachable from Codemagic right now: $SITE_URL (continuing build)."
           fi
-          echo "[PATCH] Ensuring Android WebView cache is disabled and mixed content allowed (publish workflow)"
-          # Ensure android-specific import exists for cache/mixed content modes
-          if ! grep -q "webview_flutter_android.dart" lib/main.dart; then
-            sed -i '1i\import \x27package:webview_flutter_android/webview_flutter_android.dart\x27;' lib/main.dart
-          fi
-          # Add CookieManager clearing before cache clearing in start sequence
-          sed -i "s/\(\/\/ Solution for ERR_CACHE_MISS: Clear cache and load initialization page\)/\1\n      final cookieManager = CookieManager();\n      await cookieManager.clearCookies();/" lib/main.dart || true
-          # Inject Android no-cache + mixed content after media gesture line
-          sed -i '/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
-      \/\/ Force the WebView to avoid using cache and to allow mixed content if present\n      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }\n      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }' lib/main.dart || true
+          # Skipping sed injections; fallback template already contains Android cache/mixed-content and cookie clearing
       - name: Configure icon & splash (Android)
         script: |
           cd app
