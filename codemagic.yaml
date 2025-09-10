@@ -44,9 +44,11 @@ workflows:
           fi
           # Add CookieManager clearing before cache clearing in start sequence
           sed -i "s/\(\/\/ Solution for ERR_CACHE_MISS: Clear cache and load initialization page\)/\1\n      final cookieManager = CookieManager();\n      await cookieManager.clearCookies();/" lib/main.dart || true
-          # Inject Android no-cache + mixed content after media gesture line
-          sed -i '/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
-      \/\/ Force the WebView to avoid using cache and to allow mixed content if present\n      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }\n      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }' lib/main.dart || true
+          # Inject Android no-cache + mixed content after media gesture line (append two code lines safely)
+          sed -i "/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
+      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }" lib/main.dart || true
+          sed -i "/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
+      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }" lib/main.dart || true
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
