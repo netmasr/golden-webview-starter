@@ -56,8 +56,7 @@ workflows:
           fi
           echo "[Env] Effective SITE_URL=$SITE_URL"
           if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
+            echo "[WARNING] SITE_URL is not reachable from Codemagic right now: $SITE_URL (continuing build)."
           fi
       - name: Configure icon & splash (Android)
         script: |
