@@ -37,6 +37,16 @@ workflows:
           grep -n "_showSplash\|_controller\|_loading\|_error" lib/main.dart || echo "[ERROR] Missing state variables in main.dart!"
           echo "[DEBUG] Template version check:"
           grep -n "Template Version" lib/main.dart || echo "[WARNING] No template version found"
+          echo "[PATCH] Ensuring Android WebView cache is disabled and mixed content allowed"
+          # Ensure android-specific import exists for cache/mixed content modes
+          if ! grep -q "webview_flutter_android.dart" lib/main.dart; then
+            sed -i '1i\import \x27package:webview_flutter_android/webview_flutter_android.dart\x27;' lib/main.dart
+          fi
+          # Add CookieManager clearing before cache clearing in start sequence
+          sed -i "s/\(\/\/ Solution for ERR_CACHE_MISS: Clear cache and load initialization page\)/\1\n      final cookieManager = CookieManager();\n      await cookieManager.clearCookies();/" lib/main.dart || true
+          # Inject Android no-cache + mixed content after media gesture line
+          sed -i '/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
+      \/\/ Force the WebView to avoid using cache and to allow mixed content if present\n      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }\n      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }' lib/main.dart || true
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
@@ -370,6 +380,16 @@ workflows:
             echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
             exit 1
           fi
+          echo "[PATCH] Ensuring Android WebView cache is disabled and mixed content allowed (publish workflow)"
+          # Ensure android-specific import exists for cache/mixed content modes
+          if ! grep -q "webview_flutter_android.dart" lib/main.dart; then
+            sed -i '1i\import \x27package:webview_flutter_android/webview_flutter_android.dart\x27;' lib/main.dart
+          fi
+          # Add CookieManager clearing before cache clearing in start sequence
+          sed -i "s/\(\/\/ Solution for ERR_CACHE_MISS: Clear cache and load initialization page\)/\1\n      final cookieManager = CookieManager();\n      await cookieManager.clearCookies();/" lib/main.dart || true
+          # Inject Android no-cache + mixed content after media gesture line
+          sed -i '/androidController.setMediaPlaybackRequiresUserGesture(false);/a \
+      \/\/ Force the WebView to avoid using cache and to allow mixed content if present\n      try { androidController.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) { }\n      try { androidController.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) { }' lib/main.dart || true
       - name: Configure icon & splash (Android)
         script: |
           cd app
