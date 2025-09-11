@@ -9,18 +9,32 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter:^4.9.0
-          flutter pub add webview_flutter_android:^3.16.0
-          flutter pub add webview_flutter_wkwebview:^3.15.0
+          flutter pub add webview_flutter:4.13.0
+          flutter pub add webview_flutter_android:4.10.2
+          flutter pub add webview_flutter_wkwebview:3.23.0
           # Add Android permissions for WebView
           echo "[DEBUG] Adding Android permissions for WebView..."
-          # Update AndroidManifest.xml to add required permissions
-          sed -i '1i\\<uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
-          sed -i '2i\\<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' android/app/src/main/AndroidManifest.xml
-          sed -i '3i\\<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
-          # Enable cleartext traffic and hardware acceleration
-          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
-          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml || true
+          # Update AndroidManifest.xml (portable across macOS/Linux) using awk
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          awk 'BEGIN{inserted=0} {
+            print $0;
+            if(inserted==0 && $0 ~ /<manifest/){
+              print "  <uses-permission android:name=\"android.permission.INTERNET\" />";
+              print "  <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />";
+              print "  <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />";
+              inserted=1;
+            }
+          }' "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
+          # Ensure application attributes exist
+          awk '{
+            if($0 ~ /<application/ && $0 !~ /android:usesCleartextTraffic/){
+              sub(/<application/, "<application android:usesCleartextTraffic=\"true\"", $0);
+            }
+            if($0 ~ /<application/ && $0 !~ /android:hardwareAccelerated/){
+              sub(/<application/, "<application android:hardwareAccelerated=\"true\"", $0);
+            }
+            print $0;
+          }' "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
           echo "[DEBUG] Android permissions added successfully"
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
@@ -58,17 +72,12 @@ workflows:
             "        onPageStarted: (_) => setState(() => _loading = true)," \
             "        onPageFinished: (_) => setState(() => _loading = false)," \
             "      ));" \
-            "    if (_c.platform is AndroidWebViewController) {" \
-            "      final a = _c.platform as AndroidWebViewController;" \
-            "      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}" \
-            "      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}" \
-            "    }" \
+            "    // Android-specific advanced settings removed for compatibility with older webview versions" \
             "    _start();" \
             "  }" \
             "" \
             "  Future<void> _start() async {" \
             "    try {" \
-            "      await CookieManager().clearCookies();" \
             "      await _c.clearCache();" \
             "      await _c.clearLocalStorage();" \
             "      await _c.loadRequest(Uri.parse(_site));" \
