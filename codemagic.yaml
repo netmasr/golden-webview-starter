@@ -1,669 +1,237 @@
 workflows:
-  gwa-android-build:
-    name: Golden WebView Android (Build Only)
+  android-build:
+    name: Android Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
     environment:
       flutter: stable
-    scripts:
-      - name: Prepare Flutter project
-        script: |
-          rm -rf app || true
-          flutter create app
-          cd app
-          flutter pub add webview_flutter:^4.9.0
-          flutter pub add webview_flutter_android:^3.16.0
-          flutter pub add webview_flutter_wkwebview:^3.15.0
-          # Write main.dart from template (reads config from --dart-define at build time)
-          mkdir -p lib
-          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          # Normalize SITE_URL (add https:// if missing) and check reachability
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[Env] Effective SITE_URL=$SITE_URL"
-          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
-          fi
-      - name: Configure icon & splash (Android)
-        script: |
-          cd app
-          # Ensure app label under icon is updated
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          # Diagnostics for envs
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          echo "[Env] APP_NAME=$APP_NAME"
-          echo "[Env] SITE_URL=$SITE_URL"
-          echo "[Env] SPLASH_LOGO_IMAGE_URL=$SPLASH_LOGO_IMAGE_URL"
-          echo "[Env] SPLASH_DISPLAY_LOGO=$SPLASH_DISPLAY_LOGO"
-          # Write strings.xml deterministically
-          mkdir -p android/app/src/main/res/values
-          echo "<resources>" > android/app/src/main/res/values/strings.xml
-          echo "  <string name=\"app_name\">$APP_NAME</string>" >> android/app/src/main/res/values/strings.xml
-          echo "</resources>" >> android/app/src/main/res/values/strings.xml
-          # FORCE update AndroidManifest.xml with multiple approaches
-          echo "[Fix] Updating AndroidManifest.xml with app name: $GWA_APP_NAME"
-          
-          # Method 1: Find and replace in all AndroidManifest.xml files
-          find android -name "AndroidManifest.xml" -type f | while read -r manifest; do
-            echo "[Fix] Processing manifest: $manifest"
-            sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
-            sed -i 's/android:label='\''[^'\'']*'\''/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
-            # Also try without quotes
-            sed -i 's/android:label=[^[:space:]>]*/android:label="'"$GWA_APP_NAME"'"/' "$manifest"
-          done
-          
-          # Method 2: Direct file replacement for main AndroidManifest.xml
-          if [ -f "android/app/src/main/AndroidManifest.xml" ]; then
-            echo "[Fix] Direct update of main AndroidManifest.xml"
-            cp "android/app/src/main/AndroidManifest.xml" "android/app/src/main/AndroidManifest.xml.backup"
-            sed -i 's/android:label="app"/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
-            sed -i 's/android:label='\''app'\''/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
-            sed -i 's/android:label=app/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
-          fi
-          
-          # Method 3: Check if flutter_native_splash overwrites it and fix that
-          if [ -f "android/app/src/main/AndroidManifest.xml" ]; then
-            echo "[Fix] Post-splash AndroidManifest.xml fix"
-            # Run after splash generation
-            flutter pub run flutter_native_splash:create --android-manifest-path=android/app/src/main/AndroidManifest.xml || true
-            # Then fix it again
-            sed -i 's/android:label="[^"]*"/android:label="'"$GWA_APP_NAME"'"/' "android/app/src/main/AndroidManifest.xml"
-          fi
-          
-          # FORCE update ALL strings.xml files
-          echo "[Fix] Force updating ALL strings.xml files"
-          find android -name "strings.xml" -type f | while read -r strings_file; do
-            echo "[Fix] Processing strings file: $strings_file"
-            # Create backup and rewrite completely
-            echo '<resources>' > "$strings_file"
-            echo '  <string name="app_name">'"$GWA_APP_NAME"'</string>' >> "$strings_file"
-            echo '</resources>' >> "$strings_file"
-          done
-          
-          # Update pubspec.yaml name field
-          sed -i 's/^name:.*/name: '"$(echo "$GWA_APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')"'/' pubspec.yaml
-          
-          # Update app title in main.dart
-          sed -i 's/title: '\''[^'\'']*'\''/title: '\'''"$GWA_APP_NAME"''\''/' lib/main.dart
-          
-          # Force update build.gradle app name
-          if [ -f "android/app/build.gradle" ]; then
-            echo "[Fix] Updating build.gradle"
-            sed -i 's/def flutterApplicationName = .*/def flutterApplicationName = "'"$GWA_APP_NAME"'"/' android/app/build.gradle
-          fi
-          # Force update ALL strings.xml files including generated ones
-          find android/app/src/main/res -name 'strings.xml' -type f | while read -r F; do
-            echo "[Fix] Updating strings.xml: $F"
-            if grep -q '<string name="app_name">' "$F"; then
-              sed -i 's|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">'"'"$APP_NAME"'"'</string>|' "$F" || true
-            else
-              sed -i 's|</resources>|  <string name=\"app_name\">'"'"$APP_NAME"'"'</string>\n</resources>|' "$F" || true
-            fi
-          done
-          echo "[Check] applicationId set to $GWA_APP_ID"
-          # Force update AndroidManifest.xml files with app name
-          for MF in android/app/src/main/AndroidManifest.xml android/app/src/debug/AndroidManifest.xml android/app/src/profile/AndroidManifest.xml; do
-            if [ -f "$MF" ]; then
-              echo "[Fix] Updating manifest: $MF"
-              # First, completely remove any existing android:label attributes
-              sed -i 's/android:label="[^"]*"//g' "$MF" || true
-              # Then add the correct label with direct app name (not string reference)
-              sed -i 's|<application|<application android:label="'"$APP_NAME"'"|' "$MF" || true
-              echo "[Check] Updated manifest label in $MF:"
-              grep -n "android:label" "$MF" || true
-            fi
-          done
-          
-          # Update app name in build.gradle as well
-          if [ -f android/app/build.gradle ]; then
-            echo "[Fix] Updating build.gradle with app name"
-            # Add resValue for app_name
-            if ! grep -q "resValue.*app_name" android/app/build.gradle; then
-              sed -i '/defaultConfig {/a\        resValue "string", "app_name", "'"$APP_NAME"'"' android/app/build.gradle || true
-            fi
-          fi
-          # Ensure INTERNET permission exists for release builds
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
-              sed -i '0,/<application/{s//<uses-permission android:name="android.permission.INTERNET"\/>\n&/}' android/app/src/main/AndroidManifest.xml || true
-            fi
-            # Allow HTTP (cleartext) sites if needed
-            if ! grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml; then
-              sed -i 's|<application |<application android:usesCleartextTraffic="true" |' android/app/src/main/AndroidManifest.xml || true
-            fi
-          fi
-          ICON_URL=${GWA_ICON_URL:-""}
-          SPLASH_URL=${GWA_SPLASH_URL:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          if [ -n "$ICON_URL" ]; then
-            curl -L "$ICON_URL" -o icon.png || true
-            flutter pub add dev:flutter_launcher_icons
-            printf "%s\n" \
-              "flutter_icons:" \
-              "  android: true" \
-              "  ios: true" \
-              "  image_path: icon.png" \
-              > flutter_launcher_icons.yaml
-            flutter pub run flutter_launcher_icons:main || true
-          fi
-          if [ -n "$SPLASH_URL" ]; then
-            echo "[Splash] Using full SPLASH_URL"
-            curl -L "$SPLASH_URL" -o splash.png || true
-            test -f splash.png && ls -la splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              "  android_12:" \
-              "    image: splash.png" \
-              "    color: \"$THEME_COLOR\"" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
-            # Fallback: if only logo image provided, use it for native splash image
-            curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
-            test -f splash.png && ls -la splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          else
-            echo "[Splash] No SPLASH_URL or SPLASH_LOGO_IMAGE_URL provided"
-          fi
-          # FINAL COMPREHENSIVE FIX - Apply after all splash generation
-          echo "[FINAL FIX] Comprehensive AndroidManifest.xml correction after splash generation"
-          
-          # Fix all AndroidManifest.xml files
-          find android -name "AndroidManifest.xml" -type f | while read -r manifest; do
-            if [ -f "$manifest" ]; then
-              echo "[FINAL FIX] Processing: $manifest"
-              # Create backup
-              cp "$manifest" "$manifest.backup-$(date +%s)" 2>/dev/null || true
-              
-              # Direct and robust AndroidManifest.xml label fix
-              echo "[MANIFEST FIX] Current content before fix:"
-              grep -n "android:label" "$manifest" || echo "No android:label found"
-              
-              # Use perl for more reliable replacements
-              if command -v perl >/dev/null 2>&1; then
-                perl -i -pe "s/android:label=\"[^\"]*\"/android:label=\"$GWA_APP_NAME\"/g" "$manifest" 2>/dev/null || true
-                perl -i -pe "s/android:label='[^']*'/android:label=\"$GWA_APP_NAME\"/g" "$manifest" 2>/dev/null || true
-              else
-                # Fallback to simpler sed with escaping
-                sed -i "s/android:label=\"app\"/android:label=\"$GWA_APP_NAME\"/" "$manifest" 2>/dev/null || true
-                sed -i "s/android:label='app'/android:label=\"$GWA_APP_NAME\"/" "$manifest" 2>/dev/null || true
-              fi
-              
-              # If no android:label exists, add it
-              if ! grep -q "android:label" "$manifest"; then
-                sed -i "s|<application|<application android:label=\"$GWA_APP_NAME\"|" "$manifest" 2>/dev/null || true
-              fi
-              
-              echo "[MANIFEST FIX] Content after fix:"
-              grep -n "android:label" "$manifest" || echo "No android:label found after fix"
-              
-              echo "[FINAL FIX] Updated $manifest"
-              grep -n "android:label" "$manifest" || echo "No android:label found in $manifest"
-            fi
-          done
-          
-          # Ensure strings.xml has correct app_name
-          mkdir -p android/app/src/main/res/values
-          echo '<?xml version="1.0" encoding="utf-8"?>' > android/app/src/main/res/values/strings.xml
-          echo '<resources>' >> android/app/src/main/res/values/strings.xml
-          echo '  <string name="app_name">'"$GWA_APP_NAME"'</string>' >> android/app/src/main/res/values/strings.xml
-          echo '</resources>' >> android/app/src/main/res/values/strings.xml
-          
-          echo "[Check] AndroidManifest label & cleartext"
-          grep -n 'android:label' android/app/src/main/AndroidManifest.xml || true
-          grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || true
-          echo "[Check] strings.xml app_name"
-          cat android/app/src/main/res/values/strings.xml || true
-      - name: Build Android AAB & APK
-        script: |
-          cd app
-          mkdir -p symbols
-          flutter build appbundle --release \
-            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
-            --target-platform android-arm,android-arm64 \
-            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          flutter build apk --release --split-per-abi \
-            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
-            --target-platform android-arm,android-arm64 \
-            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          echo "[List] build/app/outputs structure"
-          ls -la build/app/outputs || true
-          echo "[List] bundle/"
-          ls -la build/app/outputs/bundle || true
-          echo "[List] flutter-apk/"
-          ls -la build/app/outputs/flutter-apk || true
-    artifacts:
-      - app/build/app/outputs/bundle/**/*.aab
-      - app/build/app/outputs/flutter-apk/*.apk
-      - app/symbols/**
-
-  gwa-android-publish:
-    name: Golden WebView Android (Publish)
-    environment:
-      flutter: stable
+      groups:
+        - gwa_config
       vars:
-        GWA_GOOGLE_PLAY_TRACK: internal
+        GWA_APP_NAME: "Golden WebView App"
+        GWA_SITE_URL: ""
+        GWA_APP_ID: "com.golden.webview.app"
+        GWA_THEME_COLOR: "#2196F3"
+    
     scripts:
-      - name: Prepare Flutter project
+      - name: Get Flutter dependencies
         script: |
-          rm -rf app || true
-          flutter create app
-          cd app
-          flutter pub add webview_flutter:^4.9.0
-          flutter pub add webview_flutter_android:^3.16.0
-          flutter pub add webview_flutter_wkwebview:^3.15.0
-          # Write main.dart from template (reads config from --dart-define at build time)
-          mkdir -p lib
-          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          # Normalize SITE_URL (add https:// if missing) and check reachability
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[Env] Effective SITE_URL=$SITE_URL"
-          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
-          fi
-      - name: Configure icon & splash (Android)
+          flutter pub get
+      
+      - name: Update app configuration
         script: |
-          cd app
-          # Ensure app label under icon is updated
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          # Diagnostics for envs
-          SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          SPLASH_DISPLAY_LOGO=${GWA_SPLASH_DISPLAY_LOGO:-"0"}
-          echo "[Env] APP_NAME=$APP_NAME"
-          echo "[Env] SITE_URL=$SITE_URL"
-          echo "[Env] SPLASH_LOGO_IMAGE_URL=$SPLASH_LOGO_IMAGE_URL"
-          echo "[Env] SPLASH_DISPLAY_LOGO=$SPLASH_DISPLAY_LOGO"
-          # Write strings.xml deterministically
-          mkdir -p android/app/src/main/res/values
-          printf "%s\n" \
-            "<resources>" \
-            "  <string name=\"app_name\">$APP_NAME</string>" \
-            "</resources>" \
-            > android/app/src/main/res/values/strings.xml
-          # Update applicationId if provided
-          if [ -n "$GWA_APP_ID" ]; then
-            sed -i 's/applicationId \".*\"/applicationId \"'"$GWA_APP_ID"'\"/' android/app/build.gradle || true
-            echo "[Check] applicationId set to $GWA_APP_ID"
-          fi
-          # Normalize application label to use @string/app_name
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            if grep -q 'android:label=' android/app/src/main/AndroidManifest.xml; then
-              sed -i 's|android:label=\"[^\"]*\"|android:label=\"@string/app_name\"|' android/app/src/main/AndroidManifest.xml || true
-            else
-              sed -i 's|<application |<application android:label=\"@string/app_name\" |' android/app/src/main/AndroidManifest.xml || true
-            fi
-          fi
-          # Ensure INTERNET permission exists for release builds
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
-              sed -i '0,/<application/{s//<uses-permission android:name="android.permission.INTERNET"\/>\n&/}' android/app/src/main/AndroidManifest.xml || true
-            fi
-            # Allow HTTP (cleartext) sites if needed
-            if ! grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml; then
-              sed -i 's|<application |<application android:usesCleartextTraffic="true" |' android/app/src/main/AndroidManifest.xml || true
-            fi
-          fi
-          ICON_URL=${GWA_ICON_URL:-""}
-          SPLASH_URL=${GWA_SPLASH_URL:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          if [ -n "$ICON_URL" ]; then
-            curl -L "$ICON_URL" -o icon.png || true
-            flutter pub add dev:flutter_launcher_icons
-            printf "%s\n" \
-              "flutter_icons:" \
-              "  android: true" \
-              "  ios: true" \
-              "  image_path: icon.png" \
-              > flutter_launcher_icons.yaml
-            flutter pub run flutter_launcher_icons:main || true
-          fi
-          if [ -n "$SPLASH_URL" ]; then
-            curl -L "$SPLASH_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
-            echo "[Splash] Using LOGO fallback (SPLASH_LOGO_IMAGE_URL)"
-            # Fallback: only logo provided
-            curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          fi
-          echo "[Check] AndroidManifest labels after normalization:" || true
-          grep -R "android:label=\"@string/app_name\"" -n android/app/src/*/AndroidManifest.xml || true
-      - name: Build Android AAB & APK
+          # Update app_config.json with environment variables
+          cat > assets/config/app_config.json << EOF
+          {
+            "app_name": "${GWA_APP_NAME:-Golden WebView App}",
+            "site_url": "${GWA_SITE_URL}",
+            "app_id": "${GWA_APP_ID:-com.golden.webview.app}",
+            "user_agent": "${GWA_USER_AGENT:-}",
+            "theme_color": "${GWA_THEME_COLOR:-#2196F3}",
+            "orientation": "${GWA_PLATFORM_ORIENTATION:-system}",
+            "splash_bg_mode": "${GWA_SPLASH_BG_MODE:-color}",
+            "splash_bg_color": "${GWA_SPLASH_BG_COLOR:-#2196F3}",
+            "splash_tagline": "${GWA_SPLASH_TAGLINE:-}",
+            "splash_text_theme": "${GWA_SPLASH_TEXT_THEME:-light}",
+            "splash_delay": ${GWA_SPLASH_DELAY:-3},
+            "splash_display_logo": ${GWA_SPLASH_DISPLAY_LOGO:-true},
+            "splash_background_image": "${GWA_SPLASH_BACKGROUND_IMAGE_URL:-}",
+            "splash_logo_image": "${GWA_SPLASH_LOGO_IMAGE_URL:-}",
+            "nav_type": "${GWA_NAV_TYPE:-classic}",
+            "nav_items": [],
+            "permissions": {
+              "geolocation": ${GWA_PERM_GEOLOCATION:-false},
+              "camera": ${GWA_PERM_CAMERA:-false},
+              "microphone": ${GWA_PERM_MICROPHONE:-false}
+            },
+            "pull_to_refresh": true,
+            "enable_javascript": true,
+            "clear_cache_on_start": false
+          }
+          EOF
+          
+          echo "Updated app_config.json:"
+          cat assets/config/app_config.json
+      
+      - name: Update Android app ID
         script: |
-          cd app
-          mkdir -p symbols
+          APP_ID="${GWA_APP_ID:-com.golden.webview.app}"
+          sed -i "s/applicationId \".*\"/applicationId \"$APP_ID\"/" android/app/build.gradle
+          sed -i "s/namespace \".*\"/namespace \"$APP_ID\"/" android/app/build.gradle
+          
+          # Update package name in Kotlin file
+          mkdir -p "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')"
+          cat > "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')/MainActivity.kt" << EOF
+          package $APP_ID
+          
+          import io.flutter.embedding.android.FlutterActivity
+          
+          class MainActivity: FlutterActivity() {
+          }
+          EOF
+      
+      - name: Update Android app name
+        script: |
+          APP_NAME="${GWA_APP_NAME:-Golden WebView App}"
+          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?><resources><string name=\"app_name\">$APP_NAME</string></resources>" > android/app/src/main/res/values/strings.xml
+      
+      - name: Configure app icon
+        script: |
+          if [ -n "$GWA_ICON_URL" ]; then
+            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png
+            flutter pub run flutter_launcher_icons
+          fi
+      
+      - name: Configure splash screen
+        script: |
+          if [ -n "$GWA_SPLASH_URL" ]; then
+            curl -L "$GWA_SPLASH_URL" -o assets/splash/splash.png
+            dart run flutter_native_splash:create
+          fi
+      
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+      
+      - name: Build AAB (for Play Store)
+        script: |
           flutter build appbundle --release \
-            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
-            --target-platform android-arm,android-arm64 \
-            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          flutter build apk --release --split-per-abi \
-            --tree-shake-icons --obfuscate --split-debug-info=./symbols \
-            --target-platform android-arm,android-arm64 \
-            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          echo "[List] build/app/outputs structure"
-          ls -la build/app/outputs || true
-          echo "[List] bundle/"
-          ls -la build/app/outputs/bundle || true
-          echo "[List] flutter-apk/"
-          ls -la build/app/outputs/flutter-apk || true
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+    
     artifacts:
-      - app/build/app/outputs/bundle/**/*.aab
-      - app/build/app/outputs/flutter-apk/*.apk
-      - app/symbols/**
-  gwa-ios-build:
-    name: Golden WebView iOS (Build Only)
-    environment:
-      flutter: stable
-      xcode: latest
-    scripts:
-      - name: Prepare Flutter project
-        script: |
-          rm -rf app || true
-          flutter create app
-          cd app
-          flutter pub add webview_flutter:^4.9.0
-          flutter pub add webview_flutter_android:^3.16.0
-          flutter pub add webview_flutter_wkwebview:^3.15.0
-          mkdir -p lib
-          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[Env] Effective SITE_URL=$SITE_URL"
-          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
-          fi
-      - name: Configure icon & splash (iOS)
-        script: |
-          cd app
-          # Set iOS display name under icon
-          APP_NAME=${GWA_APP_NAME:-"GoldenApp"}
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $APP_NAME" ios/Runner/Info.plist || true
-          ICON_URL=${GWA_ICON_URL:-""}
-          SPLASH_URL=${GWA_SPLASH_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          if [ -n "$ICON_URL" ]; then
-            curl -L "$ICON_URL" -o icon.png || true
-            flutter pub add dev:flutter_launcher_icons
-            printf "%s\n" \
-              "flutter_icons:" \
-              "  android: true" \
-              "  ios: true" \
-              "  image_path: icon.png" \
-              > flutter_launcher_icons.yaml
-            flutter pub run flutter_launcher_icons:main || true
-          fi
-          if [ -n "$SPLASH_URL" ]; then
-            curl -L "$SPLASH_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
-            curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          fi
-      - name: Build iOS (unsigned if no creds)
-        script: |
-          cd app
-          if [ -n "$GWA_APPSTORE_KEY_ID" ] && [ -n "$GWA_APPSTORE_ISSUER_ID" ] && [ -n "$GWA_APPSTORE_PRIVATE_KEY" ]; then
-            echo "iOS signing credentials detected. Building signed IPA."
-            flutter build ipa --release \
-              --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-              --dart-define=GWA_SITE_URL="$SITE_URL" \
-              --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-              --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-              --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-              --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-              --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-              --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-              --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-              --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-              --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-              --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-              --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-              --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-              --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          else
-            echo "No iOS signing credentials found. Building unsigned iOS app (no codesign)."
-            flutter build ios --release --no-codesign \
-              --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-              --dart-define=GWA_SITE_URL="$SITE_URL" \
-              --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-              --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-              --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-              --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-              --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-              --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-              --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-              --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-              --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-              --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-              --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-              --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-              --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
-          fi
-    artifacts:
-      - app/build/ios/ipa/*.ipa
-      - app/build/ios/iphoneos/*.app
-      - build/ios/ipa/*.ipa
-      - build/ios/iphoneos/*.app
+      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/release/*.aab
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
 
-  gwa-ios-publish:
-    name: Golden WebView iOS (Publish)
+  ios-build:
+    name: iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
     environment:
       flutter: stable
       xcode: latest
+      cocoapods: default
+      groups:
+        - gwa_config
+      vars:
+        GWA_APP_NAME: "Golden WebView App"
+        GWA_SITE_URL: ""
+        GWA_APP_ID: "com.golden.webview.app"
+        GWA_THEME_COLOR: "#2196F3"
+    
     scripts:
-      - name: Prepare Flutter project
+      - name: Get Flutter dependencies
         script: |
-          rm -rf app || true
-          flutter create app
-          cd app
-          flutter pub add webview_flutter
-          mkdir -p lib
-          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[Env] Effective SITE_URL=$SITE_URL"
-          if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
-            exit 1
-          fi
-      - name: Configure icon & splash (iOS)
+          flutter pub get
+      
+      - name: Update app configuration
         script: |
-          cd app
-          ICON_URL=${GWA_ICON_URL:-""}
-          SPLASH_URL=${GWA_SPLASH_URL:-""}
-          SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
-          THEME_COLOR=${GWA_THEME_COLOR:-"#2196f3"}
-          if [ -n "$ICON_URL" ]; then
-            curl -L "$ICON_URL" -o icon.png || true
-            flutter pub add dev:flutter_launcher_icons
-            printf "%s\n" \
-              "flutter_icons:" \
-              "  android: true" \
-              "  ios: true" \
-              "  image_path: icon.png" \
-              > flutter_launcher_icons.yaml
-            flutter pub run flutter_launcher_icons:main || true
-          fi
-          if [ -n "$SPLASH_URL" ]; then
-            curl -L "$SPLASH_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
-            curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
-            flutter pub add dev:flutter_native_splash
-            printf "%s\n" \
-              "flutter_native_splash:" \
-              "  color: \"$THEME_COLOR\"" \
-              "  image: splash.png" \
-              "  android: true" \
-              "  ios: true" \
-              "  android_gravity: center" \
-              "  ios_content_mode: center" \
-              > flutter_native_splash.yaml
-            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
-          fi
-      - name: Build iOS IPA (signed)
+          cat > assets/config/app_config.json << EOF
+          {
+            "app_name": "${GWA_APP_NAME:-Golden WebView App}",
+            "site_url": "${GWA_SITE_URL}",
+            "app_id": "${GWA_APP_ID:-com.golden.webview.app}",
+            "user_agent": "${GWA_USER_AGENT:-}",
+            "theme_color": "${GWA_THEME_COLOR:-#2196F3}",
+            "orientation": "${GWA_PLATFORM_ORIENTATION:-system}",
+            "splash_bg_mode": "${GWA_SPLASH_BG_MODE:-color}",
+            "splash_bg_color": "${GWA_SPLASH_BG_COLOR:-#2196F3}",
+            "splash_tagline": "${GWA_SPLASH_TAGLINE:-}",
+            "splash_text_theme": "${GWA_SPLASH_TEXT_THEME:-light}",
+            "splash_delay": ${GWA_SPLASH_DELAY:-3},
+            "splash_display_logo": ${GWA_SPLASH_DISPLAY_LOGO:-true},
+            "splash_background_image": "${GWA_SPLASH_BACKGROUND_IMAGE_URL:-}",
+            "splash_logo_image": "${GWA_SPLASH_LOGO_IMAGE_URL:-}",
+            "nav_type": "${GWA_NAV_TYPE:-classic}",
+            "nav_items": [],
+            "permissions": {
+              "geolocation": ${GWA_PERM_GEOLOCATION:-false},
+              "camera": ${GWA_PERM_CAMERA:-false},
+              "microphone": ${GWA_PERM_MICROPHONE:-false}
+            },
+            "pull_to_refresh": true,
+            "enable_javascript": true,
+            "clear_cache_on_start": false
+          }
+          EOF
+      
+      - name: Install CocoaPods dependencies
         script: |
-          cd app
-          flutter build ipa --release \
-            --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
-            --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
-            --dart-define=GWA_PLATFORM_ORIENTATION="$GWA_PLATFORM_ORIENTATION" \
-            --dart-define=GWA_SPLASH_BG_MODE="$GWA_SPLASH_BG_MODE" \
-            --dart-define=GWA_SPLASH_BG_COLOR="$GWA_SPLASH_BG_COLOR" \
-            --dart-define=GWA_SPLASH_TAGLINE="$GWA_SPLASH_TAGLINE" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="$GWA_SPLASH_TEXT_THEME" \
-            --dart-define=GWA_SPLASH_DELAY="$GWA_SPLASH_DELAY" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="$GWA_SPLASH_DISPLAY_LOGO" \
-            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="$GWA_SPLASH_BACKGROUND_IMAGE_URL" \
-            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="$GWA_SPLASH_LOGO_IMAGE_URL" \
-            --dart-define=GWA_NAV_TYPE="$GWA_NAV_TYPE" \
-            --dart-define=GWA_NAV_ITEMS_B64="$GWA_NAV_ITEMS_B64"
+          cd ios && pod install
+      
+      - name: Configure app icon
+        script: |
+          if [ -n "$GWA_ICON_URL" ]; then
+            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png
+            flutter pub run flutter_launcher_icons
+          fi
+      
+      - name: Build iOS (unsigned)
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+    
     artifacts:
-      - app/build/ios/ipa/*.ipa
+      - build/ios/iphoneos/*.app
+      - build/ios/archive/*.xcarchive
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
