@@ -1,0 +1,237 @@
+workflows:
+  android-build:
+    name: Android Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      groups:
+        - gwa_config
+      vars:
+        GWA_APP_NAME: "Golden WebView App"
+        GWA_SITE_URL: ""
+        GWA_APP_ID: "com.golden.webview.app"
+        GWA_THEME_COLOR: "#2196F3"
+    
+    scripts:
+      - name: Get Flutter dependencies
+        script: |
+          flutter pub get
+      
+      - name: Update app configuration
+        script: |
+          # Update app_config.json with environment variables
+          cat > assets/config/app_config.json << EOF
+          {
+            "app_name": "${GWA_APP_NAME:-Golden WebView App}",
+            "site_url": "${GWA_SITE_URL}",
+            "app_id": "${GWA_APP_ID:-com.golden.webview.app}",
+            "user_agent": "${GWA_USER_AGENT:-}",
+            "theme_color": "${GWA_THEME_COLOR:-#2196F3}",
+            "orientation": "${GWA_PLATFORM_ORIENTATION:-system}",
+            "splash_bg_mode": "${GWA_SPLASH_BG_MODE:-color}",
+            "splash_bg_color": "${GWA_SPLASH_BG_COLOR:-#2196F3}",
+            "splash_tagline": "${GWA_SPLASH_TAGLINE:-}",
+            "splash_text_theme": "${GWA_SPLASH_TEXT_THEME:-light}",
+            "splash_delay": ${GWA_SPLASH_DELAY:-3},
+            "splash_display_logo": ${GWA_SPLASH_DISPLAY_LOGO:-true},
+            "splash_background_image": "${GWA_SPLASH_BACKGROUND_IMAGE_URL:-}",
+            "splash_logo_image": "${GWA_SPLASH_LOGO_IMAGE_URL:-}",
+            "nav_type": "${GWA_NAV_TYPE:-classic}",
+            "nav_items": [],
+            "permissions": {
+              "geolocation": ${GWA_PERM_GEOLOCATION:-false},
+              "camera": ${GWA_PERM_CAMERA:-false},
+              "microphone": ${GWA_PERM_MICROPHONE:-false}
+            },
+            "pull_to_refresh": true,
+            "enable_javascript": true,
+            "clear_cache_on_start": false
+          }
+          EOF
+          
+          echo "Updated app_config.json:"
+          cat assets/config/app_config.json
+      
+      - name: Update Android app ID
+        script: |
+          APP_ID="${GWA_APP_ID:-com.golden.webview.app}"
+          sed -i "s/applicationId \".*\"/applicationId \"$APP_ID\"/" android/app/build.gradle
+          sed -i "s/namespace \".*\"/namespace \"$APP_ID\"/" android/app/build.gradle
+          
+          # Update package name in Kotlin file
+          mkdir -p "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')"
+          cat > "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')/MainActivity.kt" << EOF
+          package $APP_ID
+          
+          import io.flutter.embedding.android.FlutterActivity
+          
+          class MainActivity: FlutterActivity() {
+          }
+          EOF
+      
+      - name: Update Android app name
+        script: |
+          APP_NAME="${GWA_APP_NAME:-Golden WebView App}"
+          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?><resources><string name=\"app_name\">$APP_NAME</string></resources>" > android/app/src/main/res/values/strings.xml
+      
+      - name: Configure app icon
+        script: |
+          if [ -n "$GWA_ICON_URL" ]; then
+            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png
+            flutter pub run flutter_launcher_icons
+          fi
+      
+      - name: Configure splash screen
+        script: |
+          if [ -n "$GWA_SPLASH_URL" ]; then
+            curl -L "$GWA_SPLASH_URL" -o assets/splash/splash.png
+            dart run flutter_native_splash:create
+          fi
+      
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+      
+      - name: Build AAB (for Play Store)
+        script: |
+          flutter build appbundle --release \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+    
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/release/*.aab
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+
+  ios-build:
+    name: iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - gwa_config
+      vars:
+        GWA_APP_NAME: "Golden WebView App"
+        GWA_SITE_URL: ""
+        GWA_APP_ID: "com.golden.webview.app"
+        GWA_THEME_COLOR: "#2196F3"
+    
+    scripts:
+      - name: Get Flutter dependencies
+        script: |
+          flutter pub get
+      
+      - name: Update app configuration
+        script: |
+          cat > assets/config/app_config.json << EOF
+          {
+            "app_name": "${GWA_APP_NAME:-Golden WebView App}",
+            "site_url": "${GWA_SITE_URL}",
+            "app_id": "${GWA_APP_ID:-com.golden.webview.app}",
+            "user_agent": "${GWA_USER_AGENT:-}",
+            "theme_color": "${GWA_THEME_COLOR:-#2196F3}",
+            "orientation": "${GWA_PLATFORM_ORIENTATION:-system}",
+            "splash_bg_mode": "${GWA_SPLASH_BG_MODE:-color}",
+            "splash_bg_color": "${GWA_SPLASH_BG_COLOR:-#2196F3}",
+            "splash_tagline": "${GWA_SPLASH_TAGLINE:-}",
+            "splash_text_theme": "${GWA_SPLASH_TEXT_THEME:-light}",
+            "splash_delay": ${GWA_SPLASH_DELAY:-3},
+            "splash_display_logo": ${GWA_SPLASH_DISPLAY_LOGO:-true},
+            "splash_background_image": "${GWA_SPLASH_BACKGROUND_IMAGE_URL:-}",
+            "splash_logo_image": "${GWA_SPLASH_LOGO_IMAGE_URL:-}",
+            "nav_type": "${GWA_NAV_TYPE:-classic}",
+            "nav_items": [],
+            "permissions": {
+              "geolocation": ${GWA_PERM_GEOLOCATION:-false},
+              "camera": ${GWA_PERM_CAMERA:-false},
+              "microphone": ${GWA_PERM_MICROPHONE:-false}
+            },
+            "pull_to_refresh": true,
+            "enable_javascript": true,
+            "clear_cache_on_start": false
+          }
+          EOF
+      
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios && pod install
+      
+      - name: Configure app icon
+        script: |
+          if [ -n "$GWA_ICON_URL" ]; then
+            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png
+            flutter pub run flutter_launcher_icons
+          fi
+      
+      - name: Build iOS (unsigned)
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
+            --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
+            --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
+            --dart-define=GWA_USER_AGENT="${GWA_USER_AGENT}" \
+            --dart-define=GWA_THEME_COLOR="${GWA_THEME_COLOR}" \
+            --dart-define=GWA_PLATFORM_ORIENTATION="${GWA_PLATFORM_ORIENTATION}" \
+            --dart-define=GWA_SPLASH_BG_MODE="${GWA_SPLASH_BG_MODE}" \
+            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR}" \
+            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE}" \
+            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME}" \
+            --dart-define=GWA_SPLASH_DELAY="${GWA_SPLASH_DELAY}" \
+            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO}" \
+            --dart-define=GWA_SPLASH_BACKGROUND_IMAGE_URL="${GWA_SPLASH_BACKGROUND_IMAGE_URL}" \
+            --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
+            --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
+            --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
+    
+    artifacts:
+      - build/ios/iphoneos/*.app
+      - build/ios/archive/*.xcarchive
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true

@@ -1,0 +1,31 @@
+{
+  "app_name": "Golden WebView App",
+  "site_url": "https://your-wordpress-site.com",
+  "app_id": "com.golden.webview.app",
+  "user_agent": "",
+  "theme_color": "#2196F3",
+  "orientation": "system",
+  
+  "splash_bg_mode": "color",
+  "splash_bg_color": "#2196F3",
+  "splash_tagline": "Welcome to our app",
+  "splash_text_theme": "light",
+  "splash_delay": 3,
+  "splash_display_logo": true,
+  "splash_background_image": "",
+  "splash_logo_image": "",
+  
+  "nav_type": "classic",
+  "nav_items": [],
+  
+  "permissions": {
+    "geolocation": false,
+    "camera": false,
+    "microphone": false
+  },
+  
+  "pull_to_refresh": true,
+  "enable_javascript": true,
+  "enable_zoom": false,
+  "clear_cache_on_start": false
+}
