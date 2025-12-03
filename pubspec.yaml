@@ -29,17 +29,21 @@ flutter:
   assets:
     - assets/config/
 
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
+# flutter_launcher_icons - run: flutter pub run flutter_launcher_icons
+# Uncomment and configure when you have an icon
+# flutter_launcher_icons:
+#   android: true
+#   ios: true
+#   image_path: "assets/icon/app_icon.png"
+#   adaptive_icon_background: "#ffffff"
+#   adaptive_icon_foreground: "assets/icon/app_icon.png"
 
-flutter_native_splash:
-  color: "#ffffff"
-  image: assets/splash/splash.png
-  android: true
-  ios: true
-  android_gravity: center
-  ios_content_mode: center
+# flutter_native_splash - run: dart run flutter_native_splash:create
+# Uncomment and configure when you have a splash image
+# flutter_native_splash:
+#   color: "#ffffff"
+#   image: assets/splash/splash.png
+#   android: true
+#   ios: true
+#   android_gravity: center
+#   ios_content_mode: center
