@@ -9,106 +9,12 @@ workflows:
           rm -rf app || true
           flutter create app
           cd app
-          flutter pub add webview_flutter:4.13.0
-          flutter pub add webview_flutter_android:4.10.2
-          flutter pub add webview_flutter_wkwebview:3.23.0
-          # Add Android permissions for WebView
-          echo "[DEBUG] Adding Android permissions for WebView..."
-          # Update AndroidManifest.xml (portable across macOS/Linux) using awk
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          awk 'BEGIN{inserted=0} {
-            print $0;
-            if(inserted==0 && $0 ~ /<manifest/){
-              print "  <uses-permission android:name=\"android.permission.INTERNET\" />";
-              print "  <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />";
-              print "  <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />";
-              inserted=1;
-            }
-          }' "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
-          # Ensure application attributes exist
-          awk '{
-            if($0 ~ /<application/ && $0 !~ /android:usesCleartextTraffic/){
-              sub(/<application/, "<application android:usesCleartextTraffic=\"true\"", $0);
-            }
-            if($0 ~ /<application/ && $0 !~ /android:hardwareAccelerated/){
-              sub(/<application/, "<application android:hardwareAccelerated=\"true\"", $0);
-            }
-            print $0;
-          }' "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
-          echo "[DEBUG] Android permissions added successfully"
+          flutter pub add webview_flutter:^4.9.0
+          flutter pub add webview_flutter_android:^3.16.0
+          flutter pub add webview_flutter_wkwebview:^3.15.0
           # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
-          echo "[DEBUG] Writing fallback main.dart via printf (YAML-safe)"
-          : > lib/main.dart
-          printf "%s\n" \
-            "import 'dart:async';" \
-            "import 'package:flutter/material.dart';" \
-            "import 'package:webview_flutter/webview_flutter.dart';" \
-            "import 'package:webview_flutter_android/webview_flutter_android.dart';" \
-            "" \
-            "void main() => runApp(const MaterialApp(" \
-            "  debugShowCheckedModeBanner: false," \
-            "  home: _App()," \
-            "));" \
-            "" \
-            "class _App extends StatefulWidget {" \
-            "  const _App({super.key});" \
-            "  @override" \
-            "  State<_App> createState() => _AppState();" \
-            "}" \
-            "" \
-            "class _AppState extends State<_App> {" \
-            "  late final WebViewController _c;" \
-            "  bool _loading = true;" \
-            "  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');" \
-            "" \
-            "  @override" \
-            "  void initState() {" \
-            "    super.initState();" \
-            "    final params = const PlatformWebViewControllerCreationParams();" \
-            "    _c = WebViewController.fromPlatformCreationParams(params)" \
-            "      ..setJavaScriptMode(JavaScriptMode.unrestricted)" \
-            "      ..setNavigationDelegate(NavigationDelegate(" \
-            "        onPageStarted: (_) => setState(() => _loading = true)," \
-            "        onPageFinished: (_) => setState(() => _loading = false)," \
-            "      ));" \
-            "    // Android-specific advanced settings removed for compatibility with older webview versions" \
-            "    _start();" \
-            "  }" \
-            "" \
-            "  Future<void> _start() async {" \
-            "    try {" \
-            "      await _c.clearCache();" \
-            "      await _c.clearLocalStorage();" \
-            "      await _c.loadRequest(Uri.parse(_site));" \
-            "    } catch (e) {" \
-            "      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');" \
-            "    }" \
-            "  }" \
-            "" \
-            "  @override" \
-            "  Widget build(BuildContext context) {" \
-            "    return Scaffold(" \
-            "      appBar: AppBar(title: const Text('WebView'))," \
-            "      body: Stack(children: [" \
-            "        WebViewWidget(controller: _c)," \
-            "        if (_loading)" \
-            "          const Center(child: CircularProgressIndicator())," \
-            "      ])," \
-            "      floatingActionButton: FloatingActionButton(" \
-            "        onPressed: _start," \
-            "        child: const Icon(Icons.refresh)," \
-            "      )," \
-            "    );" \
-            "  }" \
-            "}" \
-            >> lib/main.dart
-          echo "[DEBUG] main.dart written successfully. File size: $(wc -c < lib/main.dart) bytes"
-          echo "[DEBUG] Checking for required Flutter state variables in main.dart:"
-          grep -n "_showSplash\|_controller\|_loading\|_error" lib/main.dart || echo "[ERROR] Missing state variables in main.dart!"
-          echo "[DEBUG] Template version check:"
-          grep -n "Template Version" lib/main.dart || echo "[WARNING] No template version found"
-          # No post-write sed patches needed; fallback template already includes Android cache/mixed-content fixes
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
@@ -118,7 +24,8 @@ workflows:
           fi
           echo "[Env] Effective SITE_URL=$SITE_URL"
           if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[WARNING] SITE_URL is not reachable from Codemagic right now: $SITE_URL (continuing build)."
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
           fi
       - name: Configure icon & splash (Android)
         script: |
@@ -258,6 +165,8 @@ workflows:
               "  android_gravity: center" \
               "  ios_content_mode: center" \
               "  android_12:" \
+              "    image: splash.png" \
+              "    color: \"$THEME_COLOR\"" \
               > flutter_native_splash.yaml
             dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
@@ -327,27 +236,6 @@ workflows:
           grep -n 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || true
           echo "[Check] strings.xml app_name"
           cat android/app/src/main/res/values/strings.xml || true
-      - name: Build Android APK (Build Only)
-        script: |
-          cd app
-          # Use the same SITE_URL from prepare step
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[BUILD] Building APK with dart-defines:"
-          echo "[BUILD] SITE_URL: $SITE_URL"
-          echo "[BUILD] GWA_APP_NAME: ${GWA_APP_NAME:-Golden App}"
-          flutter build apk --release \
-            --dart-define=SITE_URL="$SITE_URL" \
-            --dart-define=GWA_SITE_URL="$SITE_URL" \
-            --dart-define=GWA_APP_NAME="${GWA_APP_NAME:-Golden App}" \
-            --dart-define=GWA_SPLASH_BG_COLOR="${GWA_SPLASH_BG_COLOR:-#2196F3}" \
-            --dart-define=GWA_SPLASH_TAGLINE="${GWA_SPLASH_TAGLINE:-Loading...}" \
-            --dart-define=GWA_SPLASH_TEXT_THEME="${GWA_SPLASH_TEXT_THEME:-light}" \
-            --dart-define=GWA_SPLASH_DISPLAY_LOGO="${GWA_SPLASH_DISPLAY_LOGO:-true}"
       - name: Build Android AAB & APK
         script: |
           cd app
@@ -356,7 +244,6 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -375,7 +262,6 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -416,87 +302,9 @@ workflows:
           flutter pub add webview_flutter:^4.9.0
           flutter pub add webview_flutter_android:^3.16.0
           flutter pub add webview_flutter_wkwebview:^3.15.0
-          # Add Android permissions for WebView
-          echo "[DEBUG] Adding Android permissions for WebView..."
-          # Update AndroidManifest.xml to add required permissions
-          sed -i '1i\\<uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
-          sed -i '2i\\<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' android/app/src/main/AndroidManifest.xml
-          sed -i '3i\\<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
-          # Enable cleartext traffic and hardware acceleration
-          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
-          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true"/' android/app/src/main/AndroidManifest.xml || true
-          echo "[DEBUG] Android permissions added successfully"
-          # Write main.dart using YAML-safe printf
+          # Write main.dart from template (reads config from --dart-define at build time)
           mkdir -p lib
-          : > lib/main.dart
-          printf "%s\n" \
-            "import 'dart:async';" \
-            "import 'package:flutter/material.dart';" \
-            "import 'package:webview_flutter/webview_flutter.dart';" \
-            "import 'package:webview_flutter_android/webview_flutter_android.dart';" \
-            "" \
-            "void main() => runApp(const MaterialApp(" \
-            "  debugShowCheckedModeBanner: false," \
-            "  home: _App()," \
-            "));" \
-            "" \
-            "class _App extends StatefulWidget {" \
-            "  const _App({super.key});" \
-            "  @override" \
-            "  State<_App> createState() => _AppState();" \
-            "}" \
-            "" \
-            "class _AppState extends State<_App> {" \
-            "  late final WebViewController _c;" \
-            "  bool _loading = true;" \
-            "  String get _site => const String.fromEnvironment('GWA_SITE_URL', defaultValue: 'https://netmasr.com');" \
-            "" \
-            "  @override" \
-            "  void initState() {" \
-            "    super.initState();" \
-            "    final params = const PlatformWebViewControllerCreationParams();" \
-            "    _c = WebViewController.fromPlatformCreationParams(params)" \
-            "      ..setJavaScriptMode(JavaScriptMode.unrestricted)" \
-            "      ..setNavigationDelegate(NavigationDelegate(" \
-            "        onPageStarted: (_) => setState(() => _loading = true)," \
-            "        onPageFinished: (_) => setState(() => _loading = false)," \
-            "      ));" \
-            "    if (_c.platform is AndroidWebViewController) {" \
-            "      final a = _c.platform as AndroidWebViewController;" \
-            "      try { a.setCacheMode(AndroidCacheMode.LOAD_NO_CACHE); } catch (_) {}" \
-            "      try { a.setMixedContentMode(AndroidMixedContentMode.alwaysAllow); } catch (_) {}" \
-            "    }" \
-            "    _start();" \
-            "  }" \
-            "" \
-            "  Future<void> _start() async {" \
-            "    try {" \
-            "      await CookieManager().clearCookies();" \
-            "      await _c.clearCache();" \
-            "      await _c.clearLocalStorage();" \
-            "      await _c.loadRequest(Uri.parse(_site));" \
-            "    } catch (e) {" \
-            "      await _c.loadHtmlString('<html><body><h3>Load error</h3><p>$e</p></body></html>');" \
-            "    }" \
-            "  }" \
-            "" \
-            "  @override" \
-            "  Widget build(BuildContext context) {" \
-            "    return Scaffold(" \
-            "      appBar: AppBar(title: const Text('WebView'))," \
-            "      body: Stack(children: [" \
-            "        WebViewWidget(controller: _c)," \
-            "        if (_loading)" \
-            "          const Center(child: CircularProgressIndicator())," \
-            "      ])," \
-            "      floatingActionButton: FloatingActionButton(" \
-            "        onPressed: _start," \
-            "        child: const Icon(Icons.refresh)," \
-            "      )," \
-            "    );" \
-            "  }" \
-            "}" \
-            >> lib/main.dart
+          cat ../templates/flutter_main.dart.tmpl > lib/main.dart
           # Normalize SITE_URL (add https:// if missing) and check reachability
           RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
           if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
@@ -506,9 +314,9 @@ workflows:
           fi
           echo "[Env] Effective SITE_URL=$SITE_URL"
           if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[WARNING] SITE_URL is not reachable from Codemagic right now: $SITE_URL (continuing build)."
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
           fi
-          # Skipping sed injections; fallback template already contains Android cache/mixed-content and cookie clearing
       - name: Configure icon & splash (Android)
         script: |
           cd app
@@ -605,7 +413,6 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -624,7 +431,6 @@ workflows:
             --tree-shake-icons --obfuscate --split-debug-info=./symbols \
             --target-platform android-arm,android-arm64 \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
@@ -792,13 +598,12 @@ workflows:
           fi
           echo "[Env] Effective SITE_URL=$SITE_URL"
           if ! curl -I -L --max-time 15 --retry 2 --retry-delay 2 "$SITE_URL" >/dev/null 2>&1; then
-            echo "[WARNING] Site URL $SITE_URL is not reachable. Build will continue but app may show connection errors."
+            echo "[Error] SITE_URL is not reachable from Codemagic: $SITE_URL"
+            exit 1
           fi
-          echo "[Build Info] GWA_APP_NAME: $GWA_APP_NAME"
-          echo "[Build Info] GWA_SITE_URL: $GWA_SITE_URL"
-          echo "[Build Info] Resolved SITE_URL: $SITE_URL"
-          # Pass SITE_URL as dart-define for runtime access
-          echo "[DEBUG] Setting up build with SITE_URL=$SITE_URL"
+      - name: Configure icon & splash (iOS)
+        script: |
+          cd app
           ICON_URL=${GWA_ICON_URL:-""}
           SPLASH_URL=${GWA_SPLASH_URL:-""}
           SPLASH_LOGO_IMAGE_URL=${GWA_SPLASH_LOGO_IMAGE_URL:-""}
@@ -810,9 +615,9 @@ workflows:
               "flutter_icons:" \
               "  android: true" \
               "  ios: true" \
-              "  image_path: \"icon.png\"" \
-              > flutter_icons.yaml
-            flutter packages pub run flutter_launcher_icons:main -f flutter_icons.yaml || true
+              "  image_path: icon.png" \
+              > flutter_launcher_icons.yaml
+            flutter pub run flutter_launcher_icons:main || true
           fi
           if [ -n "$SPLASH_URL" ]; then
             curl -L "$SPLASH_URL" -o splash.png || true
@@ -820,16 +625,21 @@ workflows:
             printf "%s\n" \
               "flutter_native_splash:" \
               "  color: \"$THEME_COLOR\"" \
-              "  image: \"splash.png\"" \
+              "  image: splash.png" \
+              "  android: true" \
+              "  ios: true" \
+              "  android_gravity: center" \
+              "  ios_content_mode: center" \
               > flutter_native_splash.yaml
-            flutter packages pub run flutter_native_splash:create --path=flutter_native_splash.yaml || true
+            dart run flutter_native_splash:create --path=flutter_native_splash.yaml || true
           elif [ -n "$SPLASH_LOGO_IMAGE_URL" ]; then
             curl -L "$SPLASH_LOGO_IMAGE_URL" -o splash.png || true
             flutter pub add dev:flutter_native_splash
             printf "%s\n" \
               "flutter_native_splash:" \
               "  color: \"$THEME_COLOR\"" \
-              "  image: \"splash.png\"" \
+              "  image: splash.png" \
+              "  android: true" \
               "  ios: true" \
               "  android_gravity: center" \
               "  ios_content_mode: center" \
@@ -838,20 +648,9 @@ workflows:
           fi
       - name: Build iOS IPA (signed)
         script: |
-          # Use the same SITE_URL from prepare step
-          RAW_SITE_URL=${GWA_SITE_URL:-"https://example.com/"}
-          if [[ "$RAW_SITE_URL" != http://* && "$RAW_SITE_URL" != https://* ]]; then
-            SITE_URL="https://$RAW_SITE_URL"
-          else
-            SITE_URL="$RAW_SITE_URL"
-          fi
-          echo "[BUILD] Building APK with all dart-defines..."
-          echo "[BUILD] SITE_URL: $SITE_URL"
-          echo "[BUILD] GWA_APP_NAME: ${GWA_APP_NAME:-Golden App}"
-          echo "[BUILD] GWA_SITE_URL: ${GWA_SITE_URL}"
+          cd app
           flutter build ipa --release \
             --dart-define=GWA_APP_NAME="$GWA_APP_NAME" \
-            --dart-define=SITE_URL="$SITE_URL" \
             --dart-define=GWA_SITE_URL="$SITE_URL" \
             --dart-define=GWA_USER_AGENT="$GWA_USER_AGENT" \
             --dart-define=GWA_THEME_COLOR="$GWA_THEME_COLOR" \
