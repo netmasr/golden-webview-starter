@@ -60,16 +60,13 @@ workflows:
           sed -i '' "s/namespace \".*\"/namespace \"$APP_ID\"/" android/app/build.gradle
           
           # Update package name in Kotlin file
-          mkdir -p "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')"
-          cat > "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')/MainActivity.kt" << 'KOTLIN_EOF'
-package $APP_ID
-
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity: FlutterActivity()
-KOTLIN_EOF
-          # Replace $APP_ID in the file
-          sed -i '' "s/package \$APP_ID/package $APP_ID/" "android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')/MainActivity.kt"
+          KOTLIN_DIR="android/app/src/main/kotlin/$(echo $APP_ID | tr '.' '/')"
+          mkdir -p "$KOTLIN_DIR"
+          echo "package $APP_ID" > "$KOTLIN_DIR/MainActivity.kt"
+          echo "" >> "$KOTLIN_DIR/MainActivity.kt"
+          echo "import io.flutter.embedding.android.FlutterActivity" >> "$KOTLIN_DIR/MainActivity.kt"
+          echo "" >> "$KOTLIN_DIR/MainActivity.kt"
+          echo "class MainActivity: FlutterActivity()" >> "$KOTLIN_DIR/MainActivity.kt"
       
       - name: Update Android app name
         script: |
