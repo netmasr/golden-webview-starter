@@ -217,7 +217,7 @@ class NavItem {
   }
 }
 
-void debugPrint(String message) {
+void logDebug(String message) {
   // ignore: avoid_print
   print('[GoldenWebView] $message');
 }

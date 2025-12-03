@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../config/app_config.dart';
+import '../config/app_config.dart' hide logDebug;
 import '../widgets/error_view.dart';
 import '../widgets/loading_view.dart';
 
@@ -28,7 +29,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _canGoBack = false;
   bool _canGoForward = false;
 
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   bool _isOffline = false;
 
   @override
@@ -47,9 +48,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   void _checkConnectivity() {
     _connectivitySubscription = Connectivity()
         .onConnectivityChanged
-        .listen((List<ConnectivityResult> results) {
+        .listen((ConnectivityResult result) {
       final wasOffline = _isOffline;
-      _isOffline = results.isEmpty || results.contains(ConnectivityResult.none);
+      _isOffline = result == ConnectivityResult.none;
 
       if (wasOffline && !_isOffline && _hasError) {
         // Connection restored, reload
