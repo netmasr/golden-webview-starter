@@ -9,7 +9,7 @@ workflows:
         - gwa_config
       vars:
         GWA_APP_NAME: "Golden WebView App"
-        GWA_SITE_URL: ""
+        GWA_SITE_URL: "https://example.com"
         GWA_APP_ID: "com.golden.webview.app"
         GWA_THEME_COLOR: "#2196F3"
     
@@ -153,7 +153,7 @@ workflows:
         - gwa_config
       vars:
         GWA_APP_NAME: "Golden WebView App"
-        GWA_SITE_URL: ""
+        GWA_SITE_URL: "https://example.com"
         GWA_APP_ID: "com.golden.webview.app"
         GWA_THEME_COLOR: "#2196F3"
     
