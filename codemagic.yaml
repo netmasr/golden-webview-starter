@@ -1,6 +1,6 @@
 workflows:
-  android-build:
-    name: Android Build
+  gwa-android-build:
+    name: GWA Android Build
     max_build_duration: 60
     instance_type: mac_mini_m1
     environment:
@@ -141,8 +141,8 @@ workflows:
           success: true
           failure: true
 
-  ios-build:
-    name: iOS Build
+  gwa-ios-build:
+    name: GWA iOS Build
     max_build_duration: 60
     instance_type: mac_mini_m1
     environment:
