@@ -83,7 +83,7 @@ workflows:
               echo "" >> pubspec.yaml
               echo "flutter_launcher_icons:" >> pubspec.yaml
               echo "  android: true" >> pubspec.yaml
-              echo "  ios: true" >> pubspec.yaml
+              echo "  ios: false" >> pubspec.yaml
               echo "  image_path: assets/icon/app_icon.png" >> pubspec.yaml
               flutter pub run flutter_launcher_icons
             fi
