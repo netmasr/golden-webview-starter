@@ -354,21 +354,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
     return Stack(
       children: [
-        // WebView
-        config.pullToRefresh
-            ? RefreshIndicator(
-                onRefresh: _reload,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: SizedBox(
-                    height: MediaQuery.of(context).size.height -
-                        (config.navType == 'bottom-tabs' ? 80 : 0) -
-                        MediaQuery.of(context).padding.top,
-                    child: WebViewWidget(controller: _controller),
-                  ),
-                ),
-              )
-            : WebViewWidget(controller: _controller),
+        // WebView - don't wrap in ScrollView, WebView handles its own scrolling
+        Positioned.fill(
+          child: WebViewWidget(controller: _controller),
+        ),
 
         // Loading indicator
         if (_isLoading)
