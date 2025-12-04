@@ -204,15 +204,16 @@ workflows:
       cocoapods: default
       groups:
         - gwa_config
-        - ios_credentials
+        # - ios_credentials  # فعّل هذا عند إعداد حساب Apple Developer
       vars:
         GWA_APP_NAME: "Golden WebView App"
         GWA_SITE_URL: "https://example.com"
         GWA_APP_ID: "com.golden.webview.app"
         GWA_THEME_COLOR: "#2196F3"
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.golden.webview.app
+      # iOS signing - فعّل هذا عند إعداد حساب Apple Developer
+      # ios_signing:
+      #   distribution_type: app_store
+      #   bundle_identifier: com.golden.webview.app
     
     scripts:
       - name: Get Flutter dependencies
@@ -293,9 +294,9 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" ios/Runner/Info.plist
       
-      - name: Build iOS
+      - name: Build iOS (unsigned)
         script: |
-          flutter build ios --release \
+          flutter build ios --release --no-codesign \
             --dart-define=GWA_APP_NAME="${GWA_APP_NAME}" \
             --dart-define=GWA_SITE_URL="${GWA_SITE_URL}" \
             --dart-define=GWA_APP_ID="${GWA_APP_ID}" \
@@ -313,16 +314,16 @@ workflows:
             --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
             --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
       
-      - name: Build IPA
-        script: |
-          xcode-project use-profiles
-          xcode-project build-ipa \
-            --workspace ios/Runner.xcworkspace \
-            --scheme Runner \
-            --archive-flags="-destination 'generic/platform=iOS'"
+      # Build IPA - فعّل هذا عند إعداد حساب Apple Developer
+      # - name: Build IPA
+      #   script: |
+      #     xcode-project use-profiles
+      #     xcode-project build-ipa \
+      #       --workspace ios/Runner.xcworkspace \
+      #       --scheme Runner \
+      #       --archive-flags="-destination 'generic/platform=iOS'"
     
     artifacts:
-      - build/ios/ipa/*.ipa
       - build/ios/iphoneos/*.app
       - /tmp/xcodebuild_logs/*.log
     
@@ -335,10 +336,10 @@ workflows:
           failure: true
       
       # الرفع التلقائي على App Store (اختياري)
-      # لتفعيله: أضف المتغيرات في مجموعة ios_credentials
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
-        submit_to_app_store: false
+      # فعّل هذا عند إعداد حساب Apple Developer
+      # app_store_connect:
+      #   api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+      #   key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+      #   issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+      #   submit_to_testflight: true
+      #   submit_to_app_store: false
