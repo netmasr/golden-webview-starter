@@ -5,10 +5,9 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       flutter: stable
-      android_signing:
-        - gwa_keystore
       groups:
         - gwa_config
+        - gwa_keystore
       vars:
         GWA_APP_NAME: "Golden WebView App"
         GWA_SITE_URL: "https://example.com"
@@ -20,7 +19,9 @@ workflows:
         script: |
           if [ -n "$CM_KEYSTORE" ]; then
             echo "Setting up release keystore..."
-            echo $CM_KEYSTORE | base64 --decode > $CM_KEYSTORE_PATH
+            echo $CM_KEYSTORE | base64 --decode > /tmp/keystore.jks
+            export CM_KEYSTORE_PATH=/tmp/keystore.jks
+            echo "Keystore created at /tmp/keystore.jks"
           else
             echo "No keystore configured, will use debug signing"
           fi
