@@ -5,6 +5,8 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       flutter: stable
+      android_signing:
+        - gwa_keystore
       groups:
         - gwa_config
       vars:
@@ -14,6 +16,15 @@ workflows:
         GWA_THEME_COLOR: "#2196F3"
     
     scripts:
+      - name: Set up keystore
+        script: |
+          if [ -n "$CM_KEYSTORE" ]; then
+            echo "Setting up release keystore..."
+            echo $CM_KEYSTORE | base64 --decode > $CM_KEYSTORE_PATH
+          else
+            echo "No keystore configured, will use debug signing"
+          fi
+      
       - name: Get Flutter dependencies
         script: |
           flutter pub get
