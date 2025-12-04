@@ -186,13 +186,6 @@ workflows:
         notify:
           success: true
           failure: true
-      
-      # الرفع التلقائي على Google Play (اختياري)
-      # لتفعيله: أضف GCLOUD_SERVICE_ACCOUNT_CREDENTIALS في مجموعة google_play
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
 
   gwa-ios-build:
     name: GWA iOS Build
@@ -204,16 +197,11 @@ workflows:
       cocoapods: default
       groups:
         - gwa_config
-        # - ios_credentials  # فعّل هذا عند إعداد حساب Apple Developer
       vars:
         GWA_APP_NAME: "Golden WebView App"
         GWA_SITE_URL: "https://example.com"
         GWA_APP_ID: "com.golden.webview.app"
         GWA_THEME_COLOR: "#2196F3"
-      # iOS signing - فعّل هذا عند إعداد حساب Apple Developer
-      # ios_signing:
-      #   distribution_type: app_store
-      #   bundle_identifier: com.golden.webview.app
     
     scripts:
       - name: Get Flutter dependencies
@@ -280,20 +268,6 @@ workflows:
             echo "No icon URL provided, skipping icon configuration"
           fi
       
-      - name: Update iOS Bundle ID
-        script: |
-          BUNDLE_ID="${GWA_APP_ID:-com.golden.webview.app}"
-          # Update Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" ios/Runner/Info.plist
-          # Update project.pbxproj
-          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*;/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/g" ios/Runner.xcodeproj/project.pbxproj
-      
-      - name: Update iOS App Name
-        script: |
-          APP_NAME="${GWA_APP_NAME:-Golden WebView App}"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" ios/Runner/Info.plist
-      
       - name: Build iOS (unsigned)
         script: |
           flutter build ios --release --no-codesign \
@@ -313,19 +287,10 @@ workflows:
             --dart-define=GWA_SPLASH_LOGO_IMAGE_URL="${GWA_SPLASH_LOGO_IMAGE_URL}" \
             --dart-define=GWA_NAV_TYPE="${GWA_NAV_TYPE}" \
             --dart-define=GWA_NAV_ITEMS_B64="${GWA_NAV_ITEMS_B64}"
-      
-      # Build IPA - فعّل هذا عند إعداد حساب Apple Developer
-      # - name: Build IPA
-      #   script: |
-      #     xcode-project use-profiles
-      #     xcode-project build-ipa \
-      #       --workspace ios/Runner.xcworkspace \
-      #       --scheme Runner \
-      #       --archive-flags="-destination 'generic/platform=iOS'"
     
     artifacts:
       - build/ios/iphoneos/*.app
-      - /tmp/xcodebuild_logs/*.log
+      - build/ios/archive/*.xcarchive
     
     publishing:
       email:
@@ -334,12 +299,3 @@ workflows:
         notify:
           success: true
           failure: true
-      
-      # الرفع التلقائي على App Store (اختياري)
-      # فعّل هذا عند إعداد حساب Apple Developer
-      # app_store_connect:
-      #   api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-      #   key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-      #   issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-      #   submit_to_testflight: true
-      #   submit_to_app_store: false
