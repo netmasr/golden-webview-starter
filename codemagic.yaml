@@ -75,16 +75,46 @@ workflows:
       
       - name: Configure app icon
         script: |
-          if [ -n "$GWA_ICON_URL" ]; then
-            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png
-            flutter pub run flutter_launcher_icons
+          mkdir -p assets/icon assets/splash
+          if [ -n "$GWA_ICON_URL" ] && [ "$GWA_ICON_URL" != "null" ]; then
+            echo "Downloading icon from: $GWA_ICON_URL"
+            curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png --fail --silent --show-error
+            if [ -f assets/icon/app_icon.png ]; then
+              # Create flutter_launcher_icons config
+              cat >> pubspec.yaml << 'ICONEOF'
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+ICONEOF
+              flutter pub run flutter_launcher_icons
+            fi
+          else
+            echo "No icon URL provided, skipping icon configuration"
           fi
       
       - name: Configure splash screen
         script: |
-          if [ -n "$GWA_SPLASH_URL" ]; then
-            curl -L "$GWA_SPLASH_URL" -o assets/splash/splash.png
-            dart run flutter_native_splash:create
+          if [ -n "$GWA_SPLASH_URL" ] && [ "$GWA_SPLASH_URL" != "null" ]; then
+            echo "Downloading splash from: $GWA_SPLASH_URL"
+            curl -L "$GWA_SPLASH_URL" -o assets/splash/splash.png --fail --silent --show-error
+            if [ -f assets/splash/splash.png ]; then
+              # Create flutter_native_splash config
+              cat >> pubspec.yaml << 'SPLASHEOF'
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/splash/splash.png
+  android: true
+  ios: true
+SPLASHEOF
+              dart run flutter_native_splash:create
+            fi
+          else
+            echo "No splash URL provided, skipping splash configuration"
           fi
       
       - name: Build APK
