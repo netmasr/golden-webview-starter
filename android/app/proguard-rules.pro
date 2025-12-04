@@ -29,3 +29,9 @@
 
 # Keep url_launcher
 -keep class io.flutter.plugins.urllauncher.** { *; }
+
+# Google Play Core - ignore missing classes (not needed for APK builds)
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.core.splitcompat.**
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**

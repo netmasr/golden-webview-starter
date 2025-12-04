@@ -56,9 +56,9 @@ android {
             // Signing with the debug keys for now
             signingConfig signingConfigs.debug
             
-            // Enable minification for smaller APK
-            minifyEnabled true
-            shrinkResources true
+            // Disable minification to avoid R8 issues with missing Play Core classes
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
