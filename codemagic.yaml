@@ -93,13 +93,11 @@ workflows:
             if curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png --fail --silent --show-error --connect-timeout 30; then
               if [ -f assets/icon/app_icon.png ] && [ -s assets/icon/app_icon.png ]; then
                 echo "Icon downloaded successfully"
-                cat >> pubspec.yaml << 'ICONEOF'
-
-flutter_launcher_icons:
-  android: true
-  ios: false
-  image_path: "assets/icon/app_icon.png"
-ICONEOF
+                echo "" >> pubspec.yaml
+                echo "flutter_launcher_icons:" >> pubspec.yaml
+                echo "  android: true" >> pubspec.yaml
+                echo "  ios: false" >> pubspec.yaml
+                echo "  image_path: \"assets/icon/app_icon.png\"" >> pubspec.yaml
                 flutter pub get
                 flutter pub run flutter_launcher_icons
               else
@@ -119,14 +117,12 @@ ICONEOF
             if curl -L "$GWA_SPLASH_URL" -o assets/splash/splash.png --fail --silent --show-error --connect-timeout 30; then
               if [ -f assets/splash/splash.png ] && [ -s assets/splash/splash.png ]; then
                 echo "Splash downloaded successfully"
-                cat >> pubspec.yaml << 'SPLASHEOF'
-
-flutter_native_splash:
-  color: "#ffffff"
-  image: assets/splash/splash.png
-  android: true
-  ios: false
-SPLASHEOF
+                echo "" >> pubspec.yaml
+                echo "flutter_native_splash:" >> pubspec.yaml
+                echo "  color: \"#ffffff\"" >> pubspec.yaml
+                echo "  image: assets/splash/splash.png" >> pubspec.yaml
+                echo "  android: true" >> pubspec.yaml
+                echo "  ios: false" >> pubspec.yaml
                 flutter pub get
                 dart run flutter_native_splash:create
               else
@@ -255,13 +251,11 @@ SPLASHEOF
             if curl -L "$GWA_ICON_URL" -o assets/icon/app_icon.png --fail --silent --show-error --connect-timeout 30; then
               if [ -f assets/icon/app_icon.png ] && [ -s assets/icon/app_icon.png ]; then
                 echo "Icon downloaded successfully"
-                cat >> pubspec.yaml << 'ICONEOF'
-
-flutter_launcher_icons:
-  android: false
-  ios: true
-  image_path: "assets/icon/app_icon.png"
-ICONEOF
+                echo "" >> pubspec.yaml
+                echo "flutter_launcher_icons:" >> pubspec.yaml
+                echo "  android: false" >> pubspec.yaml
+                echo "  ios: true" >> pubspec.yaml
+                echo "  image_path: \"assets/icon/app_icon.png\"" >> pubspec.yaml
                 flutter pub get
                 flutter pub run flutter_launcher_icons
               else
